@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaveTubeNow - Free Video Downloader</title>
+    <meta name="description" content="Download high-quality videos from YouTube, Facebook, Instagram and more instantly.">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+    <header class="app-header">
+        <div class="header-wrap">
+            <div class="brand-group">
+                <svg class="logo-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/></svg>
+                <h1 class="logo">SaveTubeNow</h1>
+            </div>
+            <button id="theme-toggle" class="btn-theme" aria-label="Toggle Dark Mode">
+                <i data-lucide="moon" class="theme-icon"></i>
+                <span>Appearance</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <section class="search-section" id="home-view">
+            <h2>Download Video & Audio Content Instantly</h2>
+            <p class="subtitle">Paste links from YouTube, Facebook, Instagram, or type search keywords seamlessly.</p>
+            
+            <div class="search-box-wrapper">
+                <form id="downloader-form" class="input-group">
+                    <div class="input-icon-prefix">
+                        <i data-lucide="link-2"></i>
+                    </div>
+                    <input type="text" id="video-url" placeholder="Paste link or type video keywords here..." required autocomplete="off">
+                    <button type="submit" class="btn-primary">
+                        <span>Fetch Media</span>
+                        <i data-lucide="arrow-right"></i>
+                    </button>
+                </form>
+                
+                <div id="suggestionsBox" class="suggestions-dropdown"></div>
+            </div>
+
+            <div id="error-message" class="error-box hidden"></div>
+
+            <div id="loading-spinner" class="spinner-box hidden">
+                <div class="spinner-ring"></div>
+                <p>Decoding media manifests... please hold on.</p>
+            </div>
+        </section>
+
+        <div class="ad-container ad-mid-banner" id="ad-homepage-middle">
+            <span class="ad-label">Sponsored Dynamic Block</span>
+        </div>
+
+        <section id="search-results-view" class="hidden">
+            <div class="section-title-bar">
+                <i data-lucide="search-code" class="title-icon"></i>
+                <h3>Search Results <span class="accent-detail">(Select content to extract)</span></h3>
+            </div>
+            <div id="search-results-grid" class="results-grid"></div>
+        </section>
+
+        <section class="download-section hidden" id="download-view">
+            <div class="meta-card">
+                <div class="meta-thumb-container">
+                    <img id="meta-thumb" src="" alt="Video Thumbnail">
+                    <div class="meta-badge-overlay">
+                        <i data-lucide="clock"></i>
+                        <span id="meta-duration">00:00</span>
+                    </div>
+                </div>
+                <div class="meta-details">
+                    <h3 id="meta-title">Video Title Metadata Placeholder</h3>
+                    <p class="meta-status-text"><i data-lucide="shield-check"></i> Verified Media Streams Checked</p>
+                </div>
+            </div>
+
+            <div class="ad-container ad-mid-banner" id="ad-download-split">
+                <span class="ad-label">Advertisement Placement</span>
+            </div>
+
+            <div class="format-selection-box">
+                <div class="format-header">
+                    <i data-lucide="layers"></i>
+                    <h4>Select Available Codec Allocation Format</h4>
+                </div>
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Resolution/Format</th>
+                                <th>File Size</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="format-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <div id="reward-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-status-icon">
+                    <i data-lucide="cpu" class="spinning-icon"></i>
+                </div>
+                <h3>Allocating High-Speed Download Pipeline...</h3>
+                <p>Your pipeline connection will initialize in exactly <span id="countdown-timer">5</span> seconds.</p>
+                <div class="progress-bar-container">
+                    <div id="progress-bar-fill" class="progress-bar-fill"></div>
+                </div>
+                <div class="ad-container ad-mid-banner">
+                    <span class="ad-label">Sponsored Content Optimization Block</span>
+                </div>
+            </div>
+        </div>
+
+        <section class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon-box accent-speed">
+                    <i data-lucide="zap"></i>
+                </div>
+                <h3>High Speed Conversions</h3>
+                <p>Process target media layouts instantly with our modern, concurrent processing pipeline.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon-box accent-secure">
+                    <i data-lucide="shield-alert"></i>
+                </div>
+                <h3>Secure Cloud Sandboxing</h3>
+                <p>Advanced real-time server checking blocks scripts or system tracking strings natively.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon-box accent-responsive">
+                    <i data-lucide="smartphone"></i>
+                </div>
+                <h3>Universal Device Access</h3>
+                <p>Fully adaptive, lightweight interfaces designed uniformly for mobile, tablet, or terminal views.</p>
+            </div>
+        </section>
+    </main>
+
+    <div class="ad-container ad-footer-banner" id="ad-global-footer">
+        <span class="ad-label">Advertisement Placement</span>
+    </div>
+
+    <footer class="app-footer">
+        <p class="disclaimer"><strong>Disclaimer:</strong> SaveTubeNow is an independent extraction engine and is not affiliated with YouTube, Facebook, or Instagram. Users assume all media usage liabilities.</p>
+        <div class="footer-links">
+            <a href="/privacy.html">Privacy Policy</a>
+            <a href="/terms.html">Terms of Service</a>
+            <a href="/disclaimer.html">Disclaimer</a>
+            <a href="/contact.html">Contact Us</a>
+        </div>
+        <p class="copyright">&copy; 2026 SaveTubeNow. Core Systems Operational • Cloud Infrastructure Active.</p>
+    </footer>
+
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        // Mount vector graphics onto marked DOM elements instantly on layout resolve
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+        });
+    </script>
+    <script src="/js/main.js"></script>
+</body>
+</html>

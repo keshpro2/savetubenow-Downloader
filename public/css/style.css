@@ -1,0 +1,914 @@
+/* ==========================================================================
+   1. MODERN DESIGN TOKENS & SYSTEM VARIABLES
+   ========================================================================== */
+:root {
+    /* Premium Dark Theme Core (Default) */
+    --bg-primary: #09090b;
+    --bg-secondary: #141417;
+    --bg-card: #18181b;
+    --text-primary: #f4f4f5;
+    --text-secondary: #a1a1aa;
+    --accent: #ef4444; /* Premium YouTube Crimson Red */
+    --accent-hover: #dc2626;
+    --border: #27272a;
+    --border-hover: #3f3f46;
+    --error: #f87171;
+    --success: #10b981;
+    --success-hover: #059669;
+    --shadow: cubic-bezier(0.16, 1, 0.3, 1);
+    --card-radius: 16px;
+    --element-radius: 12px;
+}
+
+[data-theme="light"] {
+    /* Clean Light Theme Core */
+    --bg-primary: #f8fafc;
+    --bg-secondary: #ffffff;
+    --bg-card: #ffffff;
+    --text-primary: #0f172a;
+    --text-secondary: #64748b;
+    --accent: #ef4444;
+    --accent-hover: #dc2626;
+    --border: #e2e8f0;
+    --border-hover: #cbd5e1;
+    --error: #ef4444;
+}
+
+/* ==========================================================================
+   2. GLOBAL RESET & BASE LAYOUTS
+   ========================================================================== */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    letter-spacing: -0.01em;
+    transition: background-color 0.3s ease, color 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.main-container {
+    max-width: 1140px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 3rem 1.5rem;
+    flex-grow: 1;
+}
+
+.hidden { 
+    display: none !important; 
+}
+
+/* ==========================================================================
+   3. APP HEADER & THEME TOGGLE
+   ========================================================================== */
+.app-header {
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    padding: 1.25rem 1.5rem;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.header-wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.brand-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.logo-icon {
+    width: 30px;
+    height: 30px;
+    color: var(--accent);
+}
+
+.logo {
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--text-primary);
+}
+
+.btn-theme {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 0.6rem 1.2rem;
+    border-radius: var(--element-radius);
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.btn-theme:hover {
+    border-color: var(--border-hover);
+    background: var(--bg-card);
+}
+
+/* ==========================================================================
+   4. SEARCH HERO SECTION & UNIFIED INPUT
+   ========================================================================== */
+.search-section {
+    text-align: center;
+    margin: 2rem auto 4rem auto;
+    max-width: 720px;
+}
+
+.search-section h2 {
+    font-size: 2.5rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    margin-bottom: 0.75rem;
+}
+
+.subtitle {
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    margin-bottom: 2.5rem;
+}
+
+.search-box-wrapper {
+    position: relative;
+    width: 100%;
+    margin: 0 auto;
+}
+
+.input-group {
+    display: flex;
+    align-items: center;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius);
+    padding: 6px 6px 6px 18px;
+    box-shadow: 0 10px 30px -10px rgba(0,0,0,0.15);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-group:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.15);
+}
+
+.input-icon-prefix {
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    margin-right: 14px;
+}
+
+.input-icon-prefix svg {
+    width: 20px;
+    height: 20px;
+}
+
+.input-group input {
+    flex-grow: 1;
+    border: none !important;
+    background: transparent !important;
+    outline: none !important;
+    color: var(--text-primary);
+    font-size: 1.05rem;
+    padding: 10px 0;
+}
+
+.input-group input::placeholder {
+    color: var(--text-secondary);
+}
+
+.btn-primary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--accent);
+    color: white;
+    border: none;
+    padding: 0.85rem 1.6rem;
+    border-radius: var(--element-radius);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.btn-primary:hover {
+    background-color: var(--accent-hover);
+}
+
+.btn-primary:active {
+    transform: scale(0.98);
+}
+
+/* ==========================================================================
+   5. AUTOCOMPLETE SUGGESTIONS CONTAINER
+   ========================================================================== */
+.suggestions-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    z-index: 999;
+    max-height: 280px;
+    overflow-y: auto;
+    border-radius: var(--element-radius);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+}
+
+.suggestion-item {
+    padding: 14px 18px;
+    cursor: pointer;
+    color: var(--text-primary);
+    text-align: left;
+    font-size: 0.95rem;
+    font-weight: 500;
+    transition: background-color 0.2s ease, color 0.1s;
+}
+
+.suggestion-item:hover {
+    background-color: var(--border);
+    color: var(--accent);
+}
+
+/* ==========================================================================
+   6. PREMIUM SEARCH LAYOUT SQUARE GRID
+   ========================================================================== */
+.section-title-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.section-title-bar svg {
+    width: 22px;
+    height: 22px;
+    color: var(--accent);
+}
+
+.accent-detail {
+    font-weight: 400;
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+}
+
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 24px;
+    padding: 10px 0;
+}
+
+.video-square-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    transition: transform 0.25s var(--shadow), box-shadow 0.25s var(--shadow), border-color 0.2s;
+    height: 100%;
+}
+
+.video-square-card:hover {
+    transform: translateY(-5px);
+    border-color: var(--border-hover);
+    box-shadow: 0 15px 30px -10px rgba(0, 0, 0, 0.3);
+}
+
+.card-thumb-wrap {
+    position: relative;
+    width: 100%;
+    padding-top: 56.25%; /* Fixed 16:9 aspect ratio */
+    background: #000000;
+}
+
+.card-video-img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.card-duration-badge {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background: rgba(0, 0, 0, 0.85);
+    color: #ffffff;
+    padding: 3px 7px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+    backdrop-filter: blur(4px);
+}
+
+.card-body-content {
+    padding: 16px;
+    display: flex;
+    gap: 12px;
+    flex-grow: 1;
+}
+
+.card-channel-img {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--border);
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+}
+
+.card-text-details {
+    min-width: 0;
+}
+
+.card-video-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+    line-height: 1.35;
+    display: -webkit-box;
+    
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.card-video-author {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+
+.btn-card-action {
+    width: calc(100% - 32px);
+    margin: 0 auto 16px auto;
+    background: var(--accent);
+    color: #ffffff;
+    border: none;
+    padding: 11px 0;
+    font-size: 0.88rem;
+    font-weight: 700;
+    border-radius: var(--element-radius);
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s;
+    text-align: center;
+}
+
+.btn-card-action:hover {
+    background: var(--accent-hover);
+}
+
+/* ==========================================================================
+   7. DEPRECATED OR FALLBACK SEARCH SELECTION ROW ELEMENTS
+   ========================================================================== */
+.search-item {
+    display: flex;
+    gap: 1.25rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    padding: 1rem;
+    border-radius: var(--element-radius);
+    align-items: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.search-item:hover {
+    border-color: var(--accent);
+    background: var(--bg-card);
+}
+
+.search-item img {
+    width: 110px;
+    height: auto;
+    border-radius: 6px;
+}
+
+/* FORMAT TOGGLE SWITCH CHIPS */
+.format-tab-container {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 15px;
+    border-bottom: 2px solid var(--border-color, #e0e0e0);
+    padding-bottom: 10px;
+}
+.tab-toggle-btn {
+    background: none;
+    border: none;
+    padding: 8px 16px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--text-muted, #666);
+    transition: all 0.2s ease;
+    border-radius: 6px;
+}
+.tab-toggle-btn:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+    color: var(--text-main, #111);
+}
+.tab-toggle-btn.active {
+    background-color: #00b0ff; /* Bright blue highlight accent indicator */
+    color: white !important;
+}
+
+/* REAL-TIME PROGRESS MODAL OVERLAY */
+.progress-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    backdrop-filter: blur(4px);
+    transition: opacity 0.3s ease;
+}
+.progress-card {
+    background: #1e1e1e; /* Sleek dark card block canvas container framework */
+    color: #fff;
+    padding: 30px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 400px;
+    text-align: center;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+}
+.progress-card h4 {
+    margin: 0 0 15px 0;
+    font-size: 1.1rem;
+}
+.progress-bar-container {
+    background-color: #333;
+    width: 100%;
+    height: 12px;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+.progress-bar-fill {
+    background: linear-gradient(90deg, #00e5ff, #00b0ff);
+    width: 0%;
+    height: 100%;
+    transition: width 0.1s linear;
+}
+#progress-percentage {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #00e5ff;
+}
+.hidden {
+    display: none !important;
+}
+
+/* ==========================================================================
+   8. SYSTEM STATUS CONTEXT INDICATORS (ERROR / LOADERS)
+   ========================================================================== */
+.error-box {
+    background-color: rgba(239, 68, 68, 0.08);
+    border: 1px solid var(--error);
+    color: var(--error);
+    padding: 1.1rem 1.5rem;
+    border-radius: var(--element-radius);
+    max-width: 650px;
+    margin: 1.5rem auto 0 auto;
+    font-size: 0.95rem;
+    font-weight: 500;
+    text-align: left;
+}
+
+.spinner-box {
+    margin-top: 3rem;
+}
+
+.spinner-ring {
+    width: 44px;
+    height: 44px;
+    border: 3.5px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.75s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    margin: 0 auto 1.25rem auto;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.spinner-box p {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+/* ==========================================================================
+   9. DETAILED STREAM EXTRACTOR STYLES (DOWNLOAD CONTROLS)
+   ========================================================================== */
+.download-section {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius);
+    padding: 2rem;
+    margin-bottom: 2.5rem;
+}
+
+.meta-card {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 2.5rem;
+    align-items: flex-start;
+}
+
+.meta-thumb-container {
+    position: relative;
+    width: 280px;
+    flex-shrink: 0;
+}
+
+.meta-card img {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16/9;
+    object-fit: cover;
+    border-radius: var(--element-radius);
+    border: 1px solid var(--border);
+}
+
+.meta-badge-overlay {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.meta-badge-overlay svg {
+    width: 12px;
+    height: 12px;
+}
+
+.meta-details {
+    flex: 1;
+}
+
+.meta-details h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.3;
+    margin-bottom: 0.75rem;
+    color: var(--text-primary);
+}
+
+.meta-status-text {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--success);
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+.meta-status-text svg {
+    width: 16px;
+    height: 16px;
+}
+
+.format-selection-box {
+    margin-top: 2rem;
+}
+
+.format-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 1.25rem;
+}
+
+.format-header svg {
+    width: 20px;
+    height: 20px;
+    color: var(--accent);
+}
+
+.format-header h4 {
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.table-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--element-radius);
+    background-color: var(--bg-card);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 0.95rem;
+}
+
+th, td {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+}
+
+th {
+    background-color: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+tr:last-child td {
+    border-bottom: none;
+}
+
+.badge {
+    display: inline-inline-block;
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 4px;
+    background: var(--border);
+    color: var(--text-primary);
+    margin-right: 6px;
+}
+
+.btn-download {
+    background-color: var(--success);
+    color: white;
+    border: none;
+    padding: 0.55rem 1.25rem;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-download:hover { 
+    background-color: var(--success-hover); 
+}
+
+/* ==========================================================================
+   10. HIGH CONCURRENCY PROGRESS COUNTDOWN MODAL
+   ========================================================================== */
+.modal {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(4, 4, 5, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(8px);
+}
+
+.modal-content {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 3rem 2.5rem;
+    border-radius: var(--card-radius);
+    max-width: 480px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+}
+
+.modal-status-icon {
+    margin-bottom: 1.25rem;
+}
+
+.progress-bar-container {
+    background: var(--border);
+    height: 6px;
+    width: 100%;
+    border-radius: 100px;
+    margin: 1.75rem 0;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    background: var(--accent);
+    height: 100%;
+    width: 0%;
+    transition: width 1s linear;
+}
+
+/* ==========================================================================
+   11. PREMIUM PROMOTION FEATURE MATRIX MARGINS
+   ========================================================================== */
+.features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    margin-top: 5rem;
+}
+
+.feature-card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 2rem;
+    border-radius: var(--card-radius);
+    transition: transform 0.2s, border-color 0.2s;
+}
+
+.feature-card:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+}
+
+.feature-icon-box {
+    width: 46px;
+    height: 46px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.25rem;
+}
+
+.feature-icon-box svg {
+    width: 22px;
+    height: 22px;
+}
+
+.accent-speed { background: rgba(234, 179, 8, 0.1); color: #eab308; }
+.accent-secure { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.accent-responsive { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
+
+.feature-card h3 { 
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin-bottom: 0.6rem; 
+}
+
+.feature-card p {
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+    line-height: 1.55;
+}
+
+/* ==========================================================================
+   12. NATIVE SPONSORED MONETIZATION FRAMEWORK WRAPPERS
+   ========================================================================== */
+.ad-container {
+    background: var(--bg-secondary);
+    border: 1px dashed var(--border);
+    margin: 2rem auto;
+    padding: 1.25rem;
+    text-align: center;
+    max-width: 728px;
+    width: 100%;
+    border-radius: var(--element-radius);
+}
+
+.ad-label {
+    display: block;
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.75rem;
+}
+
+/* ==========================================================================
+   13. APP ENVIRONMENT SITE FOOTER BLOCKS
+   ========================================================================== */
+.app-footer {
+    background-color: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    padding: 3rem 1.5rem;
+    text-align: center;
+    margin-top: auto;
+}
+
+.disclaimer {
+    max-width: 750px;
+    margin: 0 auto 1.75rem auto;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    line-height: 1.6;
+}
+
+.footer-links {
+    margin-bottom: 1.25rem;
+}
+
+.footer-links a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.88rem;
+    font-weight: 500;
+    margin: 0 0.85rem;
+    transition: color 0.15s;
+}
+
+.footer-links a:hover { 
+    color: var(--accent);
+}
+
+.copyright { 
+    color: var(--text-secondary); 
+    font-size: 0.82rem; 
+}
+
+/* ==========================================================================
+   14. SYSTEM ADAPTIVE BREAKPOINTS & RESPONSIVE LAYOUTS
+   ========================================================================== */
+@media(max-width: 768px) {
+    .meta-card {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+    .meta-thumb-container {
+        width: 100%;
+        max-width: 340px;
+    }
+    .meta-status-text {
+        justify-content: center;
+    }
+}
+
+@media(max-width: 600px) {
+    .search-section h2 {
+        font-size: 1.95rem;
+    }
+    .input-group {
+        flex-direction: column;
+        padding: 14px;
+        gap: 12px;
+    }
+    .input-icon-prefix {
+        display: none; /* Hide preview decorative vectors inside minimized panels */
+    }
+    .input-group input {
+        width: 100%;
+        text-align: center;
+        padding: 4px 0;
+    }
+    .btn-primary {
+        width: 100%;
+        justify-content: center;
+        padding: 0.75rem;
+    }
+    .download-section {
+        padding: 1.25rem;
+    }
+    th, td {
+        padding: 0.85rem 0.75rem;
+        font-size: 0.88rem;
+    }
+    .btn-download {
+        padding: 0.45rem 0.85rem;
+        font-size: 0.8rem;
+    }
+}
