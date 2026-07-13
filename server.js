@@ -36,12 +36,12 @@ function isValidUrl(string) {
 }
 
 // 1. LIGHTNING FAST INITIAL QUERY (WITH CACHE LOOKUP)
+// 1. LIGHTNING FAST INITIAL QUERY (WITH CACHE LOOKUP)
 app.post('/api/search', (req, res) => {
     let { url } = req.body;
     if (!url || url.trim() === "") {
         return res.status(400).json({ error: 'Please enter a link or search keywords.' });
     }
-    
 
     url = url.trim();
 
@@ -55,15 +55,15 @@ app.post('/api/search', (req, res) => {
     // Memory cache hit check
     const cachedSearch = searchCache.get(cacheKey);
     if (cachedSearch) {
-        return res.json(cachedSearch); // Sub-millisecond response time
+        return res.json(cachedSearch); 
     }
     
- // CHANGE THIS LINE:
-const searchProcess = spawn(ytDlpBinary, [
-    '--flat-playlist',
-    '--dump-json',
-    `ytsearch5:\"${sanitizedQuery}\"`
-], { shell: true });
+    // REMOVED: escaped quotes and { shell: true }
+    const searchProcess = spawn(ytDlpBinary, [
+        '--flat-playlist',
+        '--dump-json',
+        `ytsearch5:${sanitizedQuery}`
+    ]);
 
     let stdoutData = '';
     searchProcess.stdout.on('data', (data) => { stdoutData += data.toString(); });
@@ -83,8 +83,6 @@ const searchProcess = spawn(ytDlpBinary, [
             });
 
             const finalResponse = { isDirectLink: false, results: results };
-            
-            // Save payload to memory before returning response
             searchCache.set(cacheKey, finalResponse);
             res.json(finalResponse);
         } catch (err) {
@@ -95,6 +93,7 @@ const searchProcess = spawn(ytDlpBinary, [
 
 
 // 2. FETCH DETAILED FORMAT OPTIONS (WITH STREAM TOKEN CACHE INTERCEPTION)
+// 2. FETCH DETAILED FORMAT OPTIONS (WITH STREAM TOKEN CACHE INTERCEPTION)
 app.post('/api/info', (req, res) => {
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL target parameter missing' });
@@ -102,28 +101,30 @@ app.post('/api/info', (req, res) => {
     const targetUrl = url.trim();
     const cacheKey = `info_${crypto.createHash('md5').update(targetUrl).digest('hex')}`;
 
-    // Memory cache hit check 
     const cachedInfo = infoCache.get(cacheKey);
     if (cachedInfo) {
-        return res.json(cachedInfo); // Skips yt-dlp binary extraction entirely
+        return res.json(cachedInfo); 
     }
 
+    // REMOVED: Escaped quote formatting inside strings
+    // ADDED: Extractor arguments to bypass data-center restrictions
     const ytDlpArgs = [
         '--dump-json', 
         '--no-playlist', 
         '--no-check-certificate',
-        '--user-agent', '\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36\"'
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        '--extractor-args', 'youtube:player_client=default,-android_sdkless'
     ];
 
     const localCookiesPath = path.join(__dirname, 'cookies.txt');
     if (fs.existsSync(localCookiesPath)) {
-        ytDlpArgs.push('--cookies', `\"${localCookiesPath}\"`);
+        ytDlpArgs.push('--cookies', localCookiesPath);
     }
 
-    ytDlpArgs.push(`\"${targetUrl}\"`); 
+    ytDlpArgs.push(targetUrl); 
 
-    // CHANGE THIS LINE:
-const ytDlp = spawn(ytDlpBinary, ytDlpArgs, { shell: true });
+    // REMOVED: { shell: true }
+    const ytDlp = spawn(ytDlpBinary, ytDlpArgs);
     let stdoutData = '';
     let stderrData = '';
 
@@ -153,8 +154,6 @@ const ytDlp = spawn(ytDlpBinary, ytDlpArgs, { shell: true });
             }
 
             const cleanFormats = [];
-
-            // Always provide a definitive Video option at the top of the list
             cleanFormats.push({
                 formatId: 'best',
                 ext: 'mp4',
@@ -163,7 +162,6 @@ const ytDlp = spawn(ytDlpBinary, ytDlpArgs, { shell: true });
                 isAudio: false
             });
 
-            // Always provide a definitive Audio option second
             cleanFormats.push({
                 formatId: 'bestaudio',
                 ext: 'mp3',
@@ -172,7 +170,6 @@ const ytDlp = spawn(ytDlpBinary, ytDlpArgs, { shell: true });
                 isAudio: true
             });
 
-            // Process any additional specific sub-formats returned by the platform
             if (parsedData.formats && Array.isArray(parsedData.formats)) {
                 parsedData.formats.forEach(f => {
                     if (!f) return;
@@ -221,7 +218,6 @@ const ytDlp = spawn(ytDlpBinary, ytDlpArgs, { shell: true });
                 formats: cleanFormats.slice(0, 25)
             };
 
-            // Keep configuration payload saved in cache
             infoCache.set(cacheKey, payloadResult);
             res.json(payloadResult);
         } catch (e) {
@@ -231,6 +227,7 @@ const ytDlp = spawn(ytDlpBinary, ytDlpArgs, { shell: true });
     });
 });
 
+// 3. STITCHING AND CONVERSION DOWNLOAD PATHWAY
 // 3. STITCHING AND CONVERSION DOWNLOAD PATHWAY
 app.get('/api/download', (req, res) => {
     let { url, formatId, title, isAudio } = req.query;
@@ -249,15 +246,18 @@ app.get('/api/download', (req, res) => {
         ytDlpArgs = ['-f', formatSelection, '--merge-output-format', 'mp4', '-o', tempFilePath, '--no-playlist'];
     }
 
+    // ADDED: Extractor arguments to bypass data-center restrictions
+    ytDlpArgs.push('--extractor-args', 'youtube:player_client=default,-android_sdkless');
+
     const localCookiesPath = path.join(__dirname, 'cookies.txt');
     if (fs.existsSync(localCookiesPath)) {
-        ytDlpArgs.push('--cookies', `\"${localCookiesPath}\"`);
+        ytDlpArgs.push('--cookies', localCookiesPath);
     }
 
-    ytDlpArgs.push(`\"${url}\"`);
+    ytDlpArgs.push(url);
 
-    // CHANGE THIS LINE:
-const downloadProcess = spawn(ytDlpBinary, ytDlpArgs, { shell: true });
+    // REMOVED: { shell: true }
+    const downloadProcess = spawn(ytDlpBinary, ytDlpArgs);
 
     downloadProcess.on('close', (code) => {
         if (code !== 0) return res.status(500).send('Download stream failed.');
