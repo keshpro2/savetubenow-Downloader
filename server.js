@@ -93,33 +93,26 @@ app.post('/api/search', (req, res) => {
 
 
 // 2. FETCH DETAILED FORMAT OPTIONS (WITH STREAM TOKEN CACHE INTERCEPTION)
-// 2. FETCH DETAILED FORMAT OPTIONS (WITH STREAM TOKEN CACHE INTERCEPTION)
+
 // 2. VIDEO INFO/FORMATS EXTRACTION PATHWAY
-// 2. VIDEO INFO/FORMATS EXTRACTION PATHWAY (HIGH-RESILIENCY VERSION)
 app.post('/api/info', (req, res) => {
     let { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL target is missing.' });
 
     url = url.trim().replace(/[;&|`$\n\r<>]/g, '');
 
-    // Base configurations for extraction
     let ytDlpArgs = [
         '--dump-json',
         '--no-playlist',
-        // SWITCH: Using the iOS client profile which bypasses most 429 datacenter traps
-        '--extractor-args', 'youtube:player_client=ios',
-        // MASK: Fake a standard browser header so it matches your cookie format signature
+        // ✨ THE FIX: Skip webpage HTML scraping to completely bypass the 429 datacenter wall
+        '--extractor-args', 'youtube:player_skip=webpage,configs',
+        // Match with a standard browser fingerprint signature
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     ];
 
-    // Check if cookies are physically present on the server
     const localCookiesPath = path.join(__dirname, 'cookies.txt');
     if (fs.existsSync(localCookiesPath)) {
-        console.log('✅ Success: cookies.txt was found on the server pipeline.');
         ytDlpArgs.push('--cookies', localCookiesPath);
-    } else {
-        // This will print to your Render dashboard log if the file didn't upload
-        console.warn('❌ Alert: cookies.txt was NOT found in the root directory of this server.');
     }
 
     ytDlpArgs.push(url);
@@ -134,16 +127,13 @@ app.post('/api/info', (req, res) => {
     infoProcess.on('close', (code) => {
         if (code !== 0) {
             console.error('yt-dlp info error:', stderrData);
-            
-            // Helpful diagnostic string for frontend layout view
             return res.status(500).json({ 
-                error: `System Error (${code}): ${stderrData.slice(0, 150)}...` 
+                error: `System Error (${code}): ${stderrData.slice(0, 100)}...` 
             });
         }
 
         try {
             const parsedData = JSON.parse(stdoutData);
-            
             const formattedResponse = {
                 title: parsedData.title,
                 thumbnail: parsedData.thumbnail,
@@ -157,31 +147,24 @@ app.post('/api/info', (req, res) => {
                     isAudio: !f.video_ext || f.video_ext === 'none'
                 }))
             };
-
             res.json(formattedResponse);
         } catch (parseErr) {
             res.status(500).json({ error: 'Failed to process media configuration schema.' });
         }
     });
 });
-
-// 3. STITCHING AND CONVERSION DOWNLOAD PATHWAY
-// 3. STITCHING AND CONVERSION DOWNLOAD PATHWAY
 // 3. STITCHING AND CONVERSION DOWNLOAD PATHWAY
 app.get('/api/download', (req, res) => {
     let { url, formatId, title, isAudio } = req.query;
     url = url.trim().replace(/[;&|`$\n\r<>]/g, '');
     
-    // 1. Clean the original video title (remove weird characters)
     const cleanTitle = (title || 'video').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-    
-    // 2. Append your custom branding suffix to the filename
     const brandedFilename = `${cleanTitle}_from_savetubenow_downloader`;
     
     const uniqueId = crypto.randomBytes(4).toString('hex');
     const ext = isAudio === 'true' ? 'mp3' : 'mp4';
-    
     const tempFilePath = path.join(os.tmpdir(), `savetube_${uniqueId}.${ext}`);
+    
     let ytDlpArgs = [];
 
     if (isAudio === 'true') {
@@ -191,7 +174,11 @@ app.get('/api/download', (req, res) => {
         ytDlpArgs = ['-f', formatSelection, '--merge-output-format', 'mp4', '-o', tempFilePath, '--no-playlist'];
     }
 
-    ytDlpArgs.push('--extractor-args', 'youtube:player_client=default,-android_sdkless');
+    // ✨ THE FIX: Keep it synchronized with the exact same bypass flags
+    ytDlpArgs.push(
+        '--extractor-args', 'youtube:player_skip=webpage,configs',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    );
 
     const localCookiesPath = path.join(__dirname, 'cookies.txt');
     if (fs.existsSync(localCookiesPath)) {
@@ -205,7 +192,6 @@ app.get('/api/download', (req, res) => {
     downloadProcess.on('close', (code) => {
         if (code !== 0) return res.status(500).send('Download stream failed.');
         
-        // 3. Pass the branded filename here so the browser saves it correctly
         res.download(tempFilePath, `${brandedFilename}.${ext}`, () => {
             fs.unlink(tempFilePath, () => {});
         });
