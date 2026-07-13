@@ -95,23 +95,31 @@ app.post('/api/search', (req, res) => {
 // 2. FETCH DETAILED FORMAT OPTIONS (WITH STREAM TOKEN CACHE INTERCEPTION)
 // 2. FETCH DETAILED FORMAT OPTIONS (WITH STREAM TOKEN CACHE INTERCEPTION)
 // 2. VIDEO INFO/FORMATS EXTRACTION PATHWAY
+// 2. VIDEO INFO/FORMATS EXTRACTION PATHWAY (HIGH-RESILIENCY VERSION)
 app.post('/api/info', (req, res) => {
     let { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL target is missing.' });
 
     url = url.trim().replace(/[;&|`$\n\r<>]/g, '');
 
-    // Build arguments to dump JSON profiles
+    // Base configurations for extraction
     let ytDlpArgs = [
         '--dump-json',
         '--no-playlist',
-        '--extractor-args', 'youtube:player_client=default,-android_sdkless'
+        // SWITCH: Using the iOS client profile which bypasses most 429 datacenter traps
+        '--extractor-args', 'youtube:player_client=ios',
+        // MASK: Fake a standard browser header so it matches your cookie format signature
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     ];
 
-    // ✨ CRITICAL: Look for cookies on the server to bypass datacenter block
+    // Check if cookies are physically present on the server
     const localCookiesPath = path.join(__dirname, 'cookies.txt');
     if (fs.existsSync(localCookiesPath)) {
+        console.log('✅ Success: cookies.txt was found on the server pipeline.');
         ytDlpArgs.push('--cookies', localCookiesPath);
+    } else {
+        // This will print to your Render dashboard log if the file didn't upload
+        console.warn('❌ Alert: cookies.txt was NOT found in the root directory of this server.');
     }
 
     ytDlpArgs.push(url);
@@ -127,7 +135,7 @@ app.post('/api/info', (req, res) => {
         if (code !== 0) {
             console.error('yt-dlp info error:', stderrData);
             
-            // ✨ DIAGNOSTIC CHANGE: Return the REAL system error to your frontend screen
+            // Helpful diagnostic string for frontend layout view
             return res.status(500).json({ 
                 error: `System Error (${code}): ${stderrData.slice(0, 150)}...` 
             });
@@ -136,7 +144,6 @@ app.post('/api/info', (req, res) => {
         try {
             const parsedData = JSON.parse(stdoutData);
             
-            // Your format mapping logic...
             const formattedResponse = {
                 title: parsedData.title,
                 thumbnail: parsedData.thumbnail,
@@ -155,7 +162,7 @@ app.post('/api/info', (req, res) => {
         } catch (parseErr) {
             res.status(500).json({ error: 'Failed to process media configuration schema.' });
         }
-    }); // <-- Make sure this closing parenthesis and brace match your app.post route!
+    });
 });
 
 // 3. STITCHING AND CONVERSION DOWNLOAD PATHWAY
