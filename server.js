@@ -94,145 +94,83 @@ app.post('/api/search', (req, res) => {
 
 // 2. FETCH DETAILED FORMAT OPTIONS (WITH STREAM TOKEN CACHE INTERCEPTION)
 // 2. FETCH DETAILED FORMAT OPTIONS (WITH STREAM TOKEN CACHE INTERCEPTION)
+// 2. VIDEO INFO/FORMATS EXTRACTION PATHWAY
 app.post('/api/info', (req, res) => {
-    const { url } = req.body;
-    if (!url) return res.status(400).json({ error: 'URL target parameter missing' });
+    let { url } = req.body;
+    if (!url) return res.status(400).json({ error: 'URL target is missing.' });
 
-    const targetUrl = url.trim();
-    const cacheKey = `info_${crypto.createHash('md5').update(targetUrl).digest('hex')}`;
+    url = url.trim().replace(/[;&|`$\n\r<>]/g, '');
 
-    const cachedInfo = infoCache.get(cacheKey);
-    if (cachedInfo) {
-        return res.json(cachedInfo); 
-    }
-
-    // REMOVED: Escaped quote formatting inside strings
-    // ADDED: Extractor arguments to bypass data-center restrictions
-    const ytDlpArgs = [
-        '--dump-json', 
-        '--no-playlist', 
-        '--no-check-certificate',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    // Build arguments to dump JSON profiles
+    let ytDlpArgs = [
+        '--dump-json',
+        '--no-playlist',
         '--extractor-args', 'youtube:player_client=default,-android_sdkless'
     ];
 
+    // ✨ CRITICAL: Look for cookies on the server to bypass datacenter block
     const localCookiesPath = path.join(__dirname, 'cookies.txt');
     if (fs.existsSync(localCookiesPath)) {
         ytDlpArgs.push('--cookies', localCookiesPath);
     }
 
-    ytDlpArgs.push(targetUrl); 
+    ytDlpArgs.push(url);
 
-    // REMOVED: { shell: true }
-    const ytDlp = spawn(ytDlpBinary, ytDlpArgs);
+    const infoProcess = spawn(ytDlpBinary, ytDlpArgs);
     let stdoutData = '';
     let stderrData = '';
 
-    ytDlp.stdout.on('data', (data) => { stdoutData += data.toString(); });
-    ytDlp.stderr.on('data', (data) => { stderrData += data.toString(); });
+    infoProcess.stdout.on('data', (data) => { stdoutData += data; });
+    infoProcess.stderr.on('data', (data) => { stderrData += data; });
 
-    ytDlp.on('close', (code) => {
+    infoProcess.on('close', (code) => {
         if (code !== 0) {
-            console.error("Platform Scraper Error Output:\n", stderrData);
-            return res.status(500).json({ error: 'Could not extract media assets from this platform link.' });
+            console.error('yt-dlp info error:', stderrData);
+            
+            // ✨ DIAGNOSTIC CHANGE: Return the REAL system error to your frontend screen
+            return res.status(500).json({ 
+                error: `System Error (${code}): ${stderrData.slice(0, 150)}...` 
+            });
         }
 
         try {
-            let parsedData = null;
-            const lines = stdoutData.trim().split('\n');
-            for (const line of lines) {
-                if (line.trim().startsWith('{')) {
-                    try {
-                        parsedData = JSON.parse(line);
-                        break;
-                    } catch (e) {}
-                }
-            }
-
-            if (!parsedData) {
-                return res.status(500).json({ error: 'No valid data structure found in platform reply.' });
-            }
-
-            const cleanFormats = [];
-            cleanFormats.push({
-                formatId: 'best',
-                ext: 'mp4',
-                resolution: 'Best Available Video Quality (MP4)',
-                filesize: 'Variable Size',
-                isAudio: false
-            });
-
-            cleanFormats.push({
-                formatId: 'bestaudio',
-                ext: 'mp3',
-                resolution: 'Extract Audio Only (High Quality MP3)',
-                filesize: 'Approx. 5-12 MB',
-                isAudio: true
-            });
-
-            if (parsedData.formats && Array.isArray(parsedData.formats)) {
-                parsedData.formats.forEach(f => {
-                    if (!f) return;
-                    
-                    const isAudioOnly = f.vcodec === 'none' && f.acodec !== 'none';
-                    if (isAudioOnly) return; 
-
-                    let resolutionLabel = 'Standard Resolution';
-                    if (f.resolution) {
-                        resolutionLabel = f.resolution;
-                    } else if (f.width && f.height) {
-                        resolutionLabel = `${f.width}x${f.height}`;
-                    } else if (f.format_note) {
-                        resolutionLabel = f.format_note;
-                    }
-
-                    let calculatedSize = 'Variable Size';
-                    if (f.filesize) {
-                        calculatedSize = `${(f.filesize / (1024 * 1024)).toFixed(1)} MB`;
-                    } else if (f.filesize_approx) {
-                        calculatedSize = `${(f.filesize_approx / (1024 * 1024)).toFixed(1)} MB (Est.)`;
-                    }
-
-                    cleanFormats.push({
-                        formatId: f.format_id || 'best',
-                        ext: f.ext || 'mp4',
-                        resolution: `Video Quality (${resolutionLabel})`,
-                        filesize: calculatedSize,
-                        isAudio: false
-                    });
-                });
-            }
-
-            let durationLabel = 'Short Content/Reel';
-            if (parsedData.duration && !isNaN(parsedData.duration)) {
-                try {
-                    durationLabel = new Date(parsedData.duration * 1000).toISOString().substr(11, 8).replace(/^00:/, '');
-                } catch (_) {}
-            }
-
-            const payloadResult = {
-                title: parsedData.title || 'Social Media Video',
-                thumbnail: parsedData.thumbnail || 'https://via.placeholder.com/240x135?text=Video+Loaded',
-                duration: durationLabel,
-                url: targetUrl,
-                formats: cleanFormats.slice(0, 25)
+            const parsedData = JSON.parse(stdoutData);
+            
+            // Your format mapping logic...
+            const formattedResponse = {
+                title: parsedData.title,
+                thumbnail: parsedData.thumbnail,
+                duration: parsedData.duration_string || '00:00',
+                url: parsedData.webpage_url,
+                formats: parsedData.formats.map(f => ({
+                    formatId: f.format_id,
+                    resolution: f.resolution || `${f.width || '?'}x${f.height || '?'}`,
+                    ext: f.ext,
+                    filesize: f.filesize ? `${(f.filesize / (1024 * 1024)).toFixed(1)} MB` : 'Unknown Size',
+                    isAudio: !f.video_ext || f.video_ext === 'none'
+                }))
             };
 
-            infoCache.set(cacheKey, payloadResult);
-            res.json(payloadResult);
-        } catch (e) {
-            console.error("JSON Error Mapping:", e);
-            res.status(500).json({ error: 'Error processing format payload definitions.' });
+            res.json(formattedResponse);
+        } catch (parseErr) {
+            res.status(500).json({ error: 'Failed to process media configuration schema.' });
         }
-    });
+    }); // <-- Make sure this closing parenthesis and brace match your app.post route!
 });
 
+// 3. STITCHING AND CONVERSION DOWNLOAD PATHWAY
 // 3. STITCHING AND CONVERSION DOWNLOAD PATHWAY
 // 3. STITCHING AND CONVERSION DOWNLOAD PATHWAY
 app.get('/api/download', (req, res) => {
     let { url, formatId, title, isAudio } = req.query;
     url = url.trim().replace(/[;&|`$\n\r<>]/g, '');
-    const cleanTitle = (title || 'download').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    
+    // 1. Clean the original video title (remove weird characters)
+    const cleanTitle = (title || 'video').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    
+    // 2. Append your custom branding suffix to the filename
+    const brandedFilename = `${cleanTitle}_from_savetubenow_downloader`;
+    
     const uniqueId = crypto.randomBytes(4).toString('hex');
     const ext = isAudio === 'true' ? 'mp3' : 'mp4';
     
@@ -246,7 +184,6 @@ app.get('/api/download', (req, res) => {
         ytDlpArgs = ['-f', formatSelection, '--merge-output-format', 'mp4', '-o', tempFilePath, '--no-playlist'];
     }
 
-    // ADDED: Extractor arguments to bypass data-center restrictions
     ytDlpArgs.push('--extractor-args', 'youtube:player_client=default,-android_sdkless');
 
     const localCookiesPath = path.join(__dirname, 'cookies.txt');
@@ -256,12 +193,13 @@ app.get('/api/download', (req, res) => {
 
     ytDlpArgs.push(url);
 
-    // REMOVED: { shell: true }
     const downloadProcess = spawn(ytDlpBinary, ytDlpArgs);
 
     downloadProcess.on('close', (code) => {
         if (code !== 0) return res.status(500).send('Download stream failed.');
-        res.download(tempFilePath, `${cleanTitle}.${ext}`, () => {
+        
+        // 3. Pass the branded filename here so the browser saves it correctly
+        res.download(tempFilePath, `${brandedFilename}.${ext}`, () => {
             fs.unlink(tempFilePath, () => {});
         });
     });
