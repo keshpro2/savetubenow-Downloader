@@ -11,6 +11,10 @@ const NodeCache = require('node-cache'); // High-speed in-memory caching engine
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Dynamic execution engine routing (Render Linux vs Local Windows Development)
+const localBinPath = path.join(__dirname, 'bin', 'yt-dlp');
+const ytDlpBinary = fs.existsSync(localBinPath) ? localBinPath : 'yt-dlp';
+
 // Setup optimized cache instances with safety expiration thresholds (TTL)
 const searchCache = new NodeCache({ stdTTL: 600, checkperiod: 120 });    // Cache searches for 10 minutes
 const infoCache = new NodeCache({ stdTTL: 900, checkperiod: 180 });      // Cache format data for 15 minutes (links eventually expire)
@@ -37,6 +41,7 @@ app.post('/api/search', (req, res) => {
     if (!url || url.trim() === "") {
         return res.status(400).json({ error: 'Please enter a link or search keywords.' });
     }
+    
 
     url = url.trim();
 
@@ -53,11 +58,12 @@ app.post('/api/search', (req, res) => {
         return res.json(cachedSearch); // Sub-millisecond response time
     }
     
-    const searchProcess = spawn('yt-dlp', [
-        '--flat-playlist',
-        '--dump-json',
-        `ytsearch5:\"${sanitizedQuery}\"`
-    ], { shell: true });
+ // CHANGE THIS LINE:
+const searchProcess = spawn(ytDlpBinary, [
+    '--flat-playlist',
+    '--dump-json',
+    `ytsearch5:\"${sanitizedQuery}\"`
+], { shell: true });
 
     let stdoutData = '';
     searchProcess.stdout.on('data', (data) => { stdoutData += data.toString(); });
@@ -116,7 +122,8 @@ app.post('/api/info', (req, res) => {
 
     ytDlpArgs.push(`\"${targetUrl}\"`); 
 
-    const ytDlp = spawn('yt-dlp', ytDlpArgs, { shell: true });
+    // CHANGE THIS LINE:
+const ytDlp = spawn(ytDlpBinary, ytDlpArgs, { shell: true });
     let stdoutData = '';
     let stderrData = '';
 
@@ -249,7 +256,8 @@ app.get('/api/download', (req, res) => {
 
     ytDlpArgs.push(`\"${url}\"`);
 
-    const downloadProcess = spawn('yt-dlp', ytDlpArgs, { shell: true });
+    // CHANGE THIS LINE:
+const downloadProcess = spawn(ytDlpBinary, ytDlpArgs, { shell: true });
 
     downloadProcess.on('close', (code) => {
         if (code !== 0) return res.status(500).send('Download stream failed.');
