@@ -101,12 +101,13 @@ app.post('/api/info', (req, res) => {
 
     url = url.trim().replace(/[;&|`$\n\r<>]/g, '');
 
-    let ytDlpArgs = [
+   let ytDlpArgs = [
+        // 👈 Force yt-dlp to load your custom config file
+        '--config-locations', path.join(__dirname, 'yt-dlp.conf'), 
+        
         '--dump-json',
         '--no-playlist',
-        // ✨ THE FIX: Skip webpage HTML scraping to completely bypass the 429 datacenter wall
-        '--extractor-args', 'youtube:player_skip=webpage,configs',
-        // Match with a standard browser fingerprint signature
+        '--extractor-args', 'youtube:player_client=tv,web_embedded',
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     ];
 
@@ -165,7 +166,7 @@ app.get('/api/download', (req, res) => {
     const ext = isAudio === 'true' ? 'mp3' : 'mp4';
     const tempFilePath = path.join(os.tmpdir(), `savetube_${uniqueId}.${ext}`);
     
-    let ytDlpArgs = [];
+ let ytDlpArgs = [];
 
     if (isAudio === 'true') {
         ytDlpArgs = ['-f', 'bestaudio', '-x', '--audio-format', 'mp3', '-o', tempFilePath, '--no-playlist'];
@@ -174,12 +175,13 @@ app.get('/api/download', (req, res) => {
         ytDlpArgs = ['-f', formatSelection, '--merge-output-format', 'mp4', '-o', tempFilePath, '--no-playlist'];
     }
 
-    // ✨ THE FIX: Keep it synchronized with the exact same bypass flags
+    // 👈 Force yt-dlp to load your custom config file
+    ytDlpArgs.push('--config-locations', path.join(__dirname, 'yt-dlp.conf'));
+
     ytDlpArgs.push(
-        '--extractor-args', 'youtube:player_skip=webpage,configs',
+        '--extractor-args', 'youtube:player_client=tv,web_embedded',
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     );
-
     const localCookiesPath = path.join(__dirname, 'cookies.txt');
     if (fs.existsSync(localCookiesPath)) {
         ytDlpArgs.push('--cookies', localCookiesPath);
