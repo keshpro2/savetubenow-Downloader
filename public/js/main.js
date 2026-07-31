@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // --- DOM Elements ---
     const form = document.getElementById('downloader-form');
     const urlInput = document.getElementById('video-url');
     const errorBox = document.getElementById('error-message');
@@ -6,18 +7,43 @@ document.addEventListener('DOMContentLoaded', () => {
     const downloadView = document.getElementById('download-view');
     const searchResultsView = document.getElementById('search-results-view');
     const searchResultsGrid = document.getElementById('search-results-grid');
-    
+
     const metaThumb = document.getElementById('meta-thumb');
     const metaTitle = document.getElementById('meta-title');
     const metaDuration = document.getElementById('meta-duration');
     const formatTableBody = document.getElementById('format-table-body');
     const themeToggle = document.getElementById('theme-toggle');
 
-    // FRONTEND CACHE POOLS
+    // Ad Modal Interstitial Elements
+    const rewardModal = document.getElementById('reward-modal');
+    const adVideoAsset = document.getElementById('adVideoAsset');
+    const countdownTimer = document.getElementById('countdown-timer');
+    const skipAdBtn = document.getElementById('skipAdBtn');
+    const adProgressBarFill = rewardModal ? rewardModal.querySelector('#progress-bar-fill') : null;
+
+    // --- State & Frontend Caching ---
     const localSearchCache = new Map();
     const localInfoCache = new Map();
 
-    // DYNAMIC PROGRESS HOVER BOX INJECTION
+    let pendingDownloadTarget = null;
+    let adCountdownTicker = null;
+    let debounceTimer = null;
+    let suggestionAbortController = null;
+
+    // --- Theme Initialization & Persistence ---
+    if (themeToggle) {
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', nextTheme);
+            localStorage.setItem('theme', nextTheme);
+        });
+    }
+
+    // --- Dynamic Progress Overlay Injection ---
     let progressOverlay = document.getElementById('download-progress-overlay');
     if (!progressOverlay) {
         progressOverlay = document.createElement('div');
@@ -35,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(progressOverlay);
     }
 
-    // DYNAMIC SUGGESTION BOX INJECTION
+    // --- Dynamic Suggestion Box Injection ---
     let suggestionsBox = document.getElementById('suggestionsBox');
     if (!suggestionsBox && urlInput) {
         suggestionsBox = document.createElement('div');
@@ -47,37 +73,37 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    let debounceTimer;
-
-    themeToggle.addEventListener('click', () => {
-        const currentTheme = document.documentElement.getAttribute('data-theme');
-        document.documentElement.setAttribute('data-theme', currentTheme === 'dark' ? 'light' : 'dark');
-    });
-
+    // --- Autocomplete Input Handler ---
     if (urlInput && suggestionsBox) {
         urlInput.addEventListener('input', () => {
             clearTimeout(debounceTimer);
-            const query = urlInput.value.trim();
+            if (suggestionAbortController) {
+                suggestionAbortController.abort();
+            }
 
+            const query = urlInput.value.trim();
             if (query.length < 2) {
                 suggestionsBox.innerHTML = '';
                 return;
             }
 
             debounceTimer = setTimeout(async () => {
+                suggestionAbortController = new AbortController();
                 try {
-                    const response = await fetch(`/api/suggestions?q=${encodeURIComponent(query)}`);
+                    const response = await fetch(`/api/suggestions?q=${encodeURIComponent(query)}`, {
+                        signal: suggestionAbortController.signal
+                    });
                     if (!response.ok) return;
                     const suggestions = await response.json();
-                    
+
                     suggestionsBox.innerHTML = '';
-                    if (suggestions.length === 0) return;
+                    if (!Array.isArray(suggestions) || suggestions.length === 0) return;
 
                     suggestions.forEach(keyword => {
                         const row = document.createElement('div');
                         row.classList.add('suggestion-item');
                         row.textContent = keyword;
-                        
+
                         row.addEventListener('click', () => {
                             urlInput.value = keyword;
                             suggestionsBox.innerHTML = '';
@@ -92,7 +118,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         suggestionsBox.appendChild(row);
                     });
                 } catch (err) {
-                    console.error('Autocomplete retrieval failure:', err);
+                    if (err.name !== 'AbortError') {
+                        console.error('Autocomplete retrieval failure:', err);
+                    }
                 }
             }, 250);
         });
@@ -104,54 +132,63 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const targetQuery = urlInput.value.trim();
-        
-        if (suggestionsBox) suggestionsBox.innerHTML = ''; 
-        hideError();
-        showLoading();
-        downloadView.classList.add('hidden');
-        searchResultsView.classList.add('hidden');
+    // --- Form Submit Handler ---
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const targetQuery = urlInput.value.trim();
 
-        if (localSearchCache.has(targetQuery.toLowerCase())) {
-            const cachedData = localSearchCache.get(targetQuery.toLowerCase());
-            if (cachedData.isDirectLink) {
-                fetchVideoFormats(cachedData.url);
-            } else {
-                renderSearchResults(cachedData.results);
+            if (!targetQuery) return;
+
+            if (suggestionsBox) suggestionsBox.innerHTML = '';
+            hideError();
+            showLoading();
+            if (downloadView) downloadView.classList.add('hidden');
+            if (searchResultsView) searchResultsView.classList.add('hidden');
+
+            const cacheKey = targetQuery.toLowerCase();
+            if (localSearchCache.has(cacheKey)) {
+                const cachedData = localSearchCache.get(cacheKey);
+                if (cachedData.isDirectLink) {
+                    fetchVideoFormats(cachedData.url);
+                } else {
+                    renderSearchResults(cachedData.results);
+                    hideLoading();
+                }
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: targetQuery })
+                });
+                const data = await response.json();
+
+                if (!response.ok) throw new Error(data.error || 'Processing error occurred.');
+
+                localSearchCache.set(cacheKey, data);
+
+                if (data.isDirectLink) {
+                    fetchVideoFormats(data.url);
+                } else {
+                    renderSearchResults(data.results || []);
+                    hideLoading();
+                }
+            } catch (err) {
+                showError(err.message);
                 hideLoading();
             }
-            return;
-        }
+        });
+    }
 
-        try {
-            const response = await fetch('/api/search', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: targetQuery })
-            });
-            const data = await response.json();
-
-            if (!response.ok) throw new Error(data.error || 'Processing error.');
-
-            localSearchCache.set(targetQuery.toLowerCase(), data);
-
-            if (data.isDirectLink) {
-                fetchVideoFormats(data.url);
-            } else {
-                renderSearchResults(data.results);
-                hideLoading();
-            }
-        } catch (err) {
-            showError(err.message);
-            hideLoading();
-        }
-    });
-
+    // --- Render Search Results ---
     function renderSearchResults(results) {
+        if (!searchResultsGrid || !searchResultsView) return;
         searchResultsGrid.innerHTML = '';
-        if (results.length === 0) {
+
+        if (!results || results.length === 0) {
             showError("No matches found for that query.");
             return;
         }
@@ -163,7 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             card.innerHTML = `
                 <div class="card-thumb-wrap">
-                    <img src="${video.thumbnail}" alt="Video Thumbnail" class="card-video-img">
+                    <img src="${video.thumbnail}" alt="Video Thumbnail" class="card-video-img" loading="lazy">
                     <span class="card-duration-badge">${video.duration || '00:00'}</span>
                 </div>
                 <div class="card-body-content">
@@ -176,10 +213,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button class="btn-card-action" type="button">Download Video</button>
             `;
 
-            card.querySelector('.btn-card-action').addEventListener('click', (e) => {
-                e.stopPropagation(); 
-                initiateFormatFetch(video.url);
-            });
+            const actionBtn = card.querySelector('.btn-card-action');
+            if (actionBtn) {
+                actionBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    initiateFormatFetch(video.url);
+                });
+            }
+
             card.addEventListener('click', () => {
                 initiateFormatFetch(video.url);
             });
@@ -191,10 +232,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function initiateFormatFetch(url) {
         showLoading();
-        searchResultsView.classList.add('hidden');
+        if (searchResultsView) searchResultsView.classList.add('hidden');
         fetchVideoFormats(url);
     }
 
+    // --- Fetch & Render Video Formats ---
     async function fetchVideoFormats(url) {
         const targetUrl = url.trim();
 
@@ -211,7 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ url: targetUrl })
             });
             const data = await response.json();
-            if (!response.ok) throw new Error(data.error);
+            if (!response.ok) throw new Error(data.error || 'Failed to fetch video information.');
 
             localInfoCache.set(targetUrl, data);
             renderVideoMetadata(data);
@@ -222,13 +264,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // UPGRADED: RENDERS MEDIA META WITH VIDEO/AUDIO NAVIGATION CHIPS
     function renderVideoMetadata(data) {
-        metaThumb.src = data.thumbnail || 'https://via.placeholder.com/240x135?text=No+Image';
-        metaTitle.textContent = data.title;
-        metaDuration.textContent = data.duration;
-        
-        // Setup dynamic switch tabs inside table header area container dynamically
+        if (metaThumb) metaThumb.src = data.thumbnail || 'https://via.placeholder.com/240x135?text=No+Image';
+        if (metaTitle) metaTitle.textContent = data.title;
+        if (metaDuration) metaDuration.textContent = data.duration;
+
+        if (!formatTableBody) return;
+
         let formatTabWrapper = document.getElementById('format-tab-type-switcher');
         if (!formatTabWrapper) {
             formatTabWrapper = document.createElement('div');
@@ -247,7 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const filterAndRenderTable = (showAudioType) => {
             formatTableBody.innerHTML = '';
-            const filtered = data.formats.filter(f => f.isAudio === showAudioType);
+            const filtered = (data.formats || []).filter(f => Boolean(f.isAudio) === showAudioType);
 
             if (filtered.length === 0) {
                 formatTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; padding: 20px;">No compatible streams detected for this category.</td></tr>`;
@@ -257,39 +299,100 @@ document.addEventListener('DOMContentLoaded', () => {
             filtered.forEach(format => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td><span class="badge">${format.isAudio ? '🎵 AUDIO' : '📺 VIDEO'}</span> <strong>${format.ext.toUpperCase()}</strong> - ${format.resolution}</td>
-                    <td>${format.filesize}</td>
-                    <td><button class="btn-download" data-id="${format.formatId}" data-audio="${format.isAudio}" data-title="${encodeURIComponent(data.title)}" data-url="${encodeURIComponent(data.url)}" data-ext="${format.ext}">Download</button></td>
+                    <td><span class="badge">${format.isAudio ? '🎵 AUDIO' : '📺 VIDEO'}</span> <strong>${(format.ext || 'MP4').toUpperCase()}</strong> - ${format.resolution || 'N/A'}</td>
+                    <td>${format.filesize || 'Unknown'}</td>
+                    <td><button class="btn-download" data-id="${format.formatId}" data-audio="${format.isAudio}" data-title="${encodeURIComponent(data.title)}" data-url="${encodeURIComponent(data.url)}" data-ext="${format.ext || 'mp4'}">Download</button></td>
                 `;
                 formatTableBody.appendChild(row);
             });
 
-            // ATTACH REAL-TIME PROGRESS STREAM TRACKER TO NEWLY RENDERED BUTTONS
             document.querySelectorAll('.btn-download').forEach(button => {
                 button.addEventListener('click', (e) => {
-                    handleStreamedDownload(e.target);
+                    initiateAdInterstitial(e.target);
                 });
             });
         };
 
-        videoBtn.addEventListener('click', () => {
+        if (videoBtn && audioBtn) {
+            videoBtn.addEventListener('click', () => {
+                videoBtn.classList.add('active');
+                audioBtn.classList.remove('active');
+                filterAndRenderTable(false);
+            });
+
+            audioBtn.addEventListener('click', () => {
+                audioBtn.classList.add('active');
+                videoBtn.classList.remove('active');
+                filterAndRenderTable(true);
+            });
+
             videoBtn.classList.add('active');
             audioBtn.classList.remove('active');
-            filterAndRenderTable(false);
-        });
+        }
 
-        audioBtn.addEventListener('click', () => {
-            audioBtn.classList.add('active');
-            videoBtn.classList.remove('active');
-            filterAndRenderTable(true);
-        });
-
-        // Initialize display list presenting regular MP4 choices first
         filterAndRenderTable(false);
-        downloadView.classList.remove('hidden');
+
+        if (downloadView) downloadView.classList.remove('hidden');
     }
 
-    // NEW ENGINE: STREAM DOWNLOAD HANDLER WITH REAL-TIME HOVER PERCENTAGE CALCULATOR
+    // --- Ad Interstitial Modal Management ---
+    function initiateAdInterstitial(buttonElement) {
+        if (!rewardModal || !adVideoAsset || !skipAdBtn) {
+            handleStreamedDownload(buttonElement);
+            return;
+        }
+
+        pendingDownloadTarget = buttonElement;
+
+        let timeLeft = 10;
+        if (countdownTimer) countdownTimer.textContent = timeLeft;
+        if (adProgressBarFill) adProgressBarFill.style.width = '0%';
+
+        skipAdBtn.disabled = true;
+        skipAdBtn.textContent = "Please Wait...";
+        skipAdBtn.className = "btn-skip disabled";
+
+        rewardModal.classList.remove('hidden');
+
+        adVideoAsset.currentTime = 0;
+        adVideoAsset.muted = false;
+        adVideoAsset.play().catch(err => {
+            console.warn("Autoplay restriction caught by browser policy:", err);
+        });
+
+        clearInterval(adCountdownTicker);
+        adCountdownTicker = setInterval(() => {
+            timeLeft--;
+            if (countdownTimer) countdownTimer.textContent = timeLeft;
+
+            if (adProgressBarFill) {
+                const percentageRatio = ((10 - timeLeft) / 10) * 100;
+                adProgressBarFill.style.width = `${Math.min(100, Math.max(0, percentageRatio))}%`;
+            }
+
+            if (timeLeft <= 0) {
+                clearInterval(adCountdownTicker);
+                skipAdBtn.disabled = false;
+                skipAdBtn.textContent = "Get File Link";
+                skipAdBtn.className = "btn-skip active-unlocked";
+            }
+        }, 1000);
+    }
+
+    if (skipAdBtn) {
+        skipAdBtn.addEventListener('click', () => {
+            clearInterval(adCountdownTicker);
+            if (adVideoAsset) adVideoAsset.pause();
+            if (rewardModal) rewardModal.classList.add('hidden');
+
+            if (pendingDownloadTarget) {
+                handleStreamedDownload(pendingDownloadTarget);
+                pendingDownloadTarget = null;
+            }
+        });
+    }
+
+    // --- Streamed Download Handler ---
     async function handleStreamedDownload(buttonElement) {
         const targetUrl = decodeURIComponent(buttonElement.getAttribute('data-url'));
         const formatId = buttonElement.getAttribute('data-id');
@@ -298,14 +401,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const fileExtension = buttonElement.getAttribute('data-ext') || 'mp4';
 
         const statusText = document.getElementById('progress-status-text');
-        const barFill = document.getElementById('progress-bar-fill');
+        const streamBarFill = progressOverlay ? progressOverlay.querySelector('#progress-bar-fill') : null;
         const percentText = document.getElementById('progress-percentage');
 
-        // Reset and display overlay panel view
-        statusText.textContent = "Server is converting media assets...";
-        barFill.style.width = '0%';
-        percentText.textContent = '0%';
-        progressOverlay.classList.remove('hidden');
+        if (statusText) statusText.textContent = "Server is converting media assets...";
+        if (streamBarFill) streamBarFill.style.width = '0%';
+        if (percentText) percentText.textContent = '0%';
+        if (progressOverlay) progressOverlay.classList.remove('hidden');
 
         try {
             const queryPath = `/api/download?url=${encodeURIComponent(targetUrl)}&formatId=${formatId}&title=${encodeURIComponent(fileTitle)}&isAudio=${isAudio}`;
@@ -313,67 +415,79 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!response.ok) throw new Error("Download stream rejected from host infrastructure.");
 
-            statusText.textContent = "Downloading asset pipeline...";
-            
+            if (statusText) statusText.textContent = "Downloading asset pipeline...";
+
             const reader = response.body.getReader();
-            const totalBytes = parseInt(response.headers.get('content-length'), 10);
-            
+            const contentLengthHeader = response.headers.get('content-length');
+            const totalBytes = contentLengthHeader ? parseInt(contentLengthHeader, 10) : 0;
+
             let receivedBytes = 0;
             const chunksArray = [];
 
             while (true) {
                 const { done, value } = await reader.read();
-                
+
                 if (done) break;
 
                 chunksArray.push(value);
                 receivedBytes += value.length;
 
-                if (totalBytes) {
-                    const currentPercentage = Math.round((receivedBytes / totalBytes) * 100);
-                    barFill.style.width = `${currentPercentage}%`;
-                    percentText.textContent = `${currentPercentage}%`;
-                } else {
-                    // Fallback animation string if remote engine strips out length dimensions profiles
+                if (totalBytes > 0) {
+                    const currentPercentage = Math.min(100, Math.round((receivedBytes / totalBytes) * 100));
+                    if (streamBarFill) streamBarFill.style.width = `${currentPercentage}%`;
+                    if (percentText) percentText.textContent = `${currentPercentage}%`;
+                } else if (statusText) {
                     statusText.textContent = `Streaming chunk data: ${(receivedBytes / (1024 * 1024)).toFixed(1)} MB parsed...`;
                 }
             }
 
-            statusText.textContent = "Saving download file...";
-            barFill.style.width = '100%';
-            percentText.textContent = '100%';
+            if (statusText) statusText.textContent = "Saving download file...";
+            if (streamBarFill) streamBarFill.style.width = '100%';
+            if (percentText) percentText.textContent = '100%';
 
-            // Compile complete byte array into local file link
-            const blobObj = new Blob(chunksArray, { type: response.headers.get('content-type') });
+            const contentType = response.headers.get('content-type') || 'application/octet-stream';
+            const blobObj = new Blob(chunksArray, { type: contentType });
             const localDownloadUrl = URL.createObjectURL(blobObj);
-            
+
             const anchorLink = document.createElement('a');
             anchorLink.href = localDownloadUrl;
-            
+
             const cleanTitle = fileTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
             anchorLink.download = `${cleanTitle}.${fileExtension}`;
-            
+
             document.body.appendChild(anchorLink);
             anchorLink.click();
-            
-            // Cleanup application instances
+
             document.body.removeChild(anchorLink);
             URL.revokeObjectURL(localDownloadUrl);
 
-            // Close layout view on completion delay
-            setTimeout(() => {
-                progressOverlay.classList.add('hidden');
-            }, 1000);
-
         } catch (error) {
-            console.error(error);
+            console.error('Download stream error:', error);
             alert("Streaming conversion failed or timed out during server file transfer.");
-            progressOverlay.classList.add('hidden');
+        } finally {
+            setTimeout(() => {
+                if (progressOverlay) progressOverlay.classList.add('hidden');
+            }, 1000);
         }
     }
 
-    function showError(msg) { errorBox.textContent = msg; errorBox.classList.remove('hidden'); }
-    function hideError() { errorBox.classList.add('hidden'); }
-    function showLoading() { loadingSpinner.classList.remove('hidden'); }
-    function hideLoading() { loadingSpinner.classList.add('hidden'); }
+    // --- Helper Utilities ---
+    function showError(msg) {
+        if (errorBox) {
+            errorBox.textContent = msg;
+            errorBox.classList.remove('hidden');
+        }
+    }
+
+    function hideError() {
+        if (errorBox) errorBox.classList.add('hidden');
+    }
+
+    function showLoading() {
+        if (loadingSpinner) loadingSpinner.classList.remove('hidden');
+    }
+
+    function hideLoading() {
+        if (loadingSpinner) loadingSpinner.classList.add('hidden');
+    }
 });

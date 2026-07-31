@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   
     <title>SaveTubeNow - Free Video Downloader</title>
     <meta name="description" content="Download high-quality videos from YouTube, Facebook, Instagram and more instantly.">
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -105,18 +106,30 @@
             </div>
         </section>
 
+        <!-- Interception Video Ad Interstitial Modal -->
         <div id="reward-modal" class="modal hidden">
-            <div class="modal-content">
+            <div class="modal-content video-ad-box">
                 <div class="modal-status-icon">
-                    <i data-lucide="cpu" class="spinning-icon"></i>
+                    <i data-lucide="play-circle" class="ad-playing-icon"></i>
                 </div>
                 <h3>Allocating High-Speed Download Pipeline...</h3>
-                <p>Your pipeline connection will initialize in exactly <span id="countdown-timer">5</span> seconds.</p>
+                <p>Your download link unlocks automatically in <span id="countdown-timer">10</span> seconds.</p>
+                
+                <div class="ad-video-frame">
+                    <video id="adVideoAsset" playsinline muted autoplay>
+                        <source src="https://assets.mixkit.co/videos/preview/mixkit-digital-animation-of-screens-and-data-31932-large.mp4" type="video/mp4">
+                        Your browser layout setup does not support native video elements.
+                    </video>
+                </div>
+
                 <div class="progress-bar-container">
                     <div id="progress-bar-fill" class="progress-bar-fill"></div>
                 </div>
-                <div class="ad-container ad-mid-banner">
-                    <span class="ad-label">Sponsored Content Optimization Block</span>
+                
+                <div class="ad-action-footer">
+                    <button id="skipAdBtn" disabled class="btn-skip disabled">
+                        Please Wait...
+                    </button>
                 </div>
             </div>
         </div>
@@ -150,20 +163,28 @@
         <span class="ad-label">Advertisement Placement</span>
     </div>
 
+    <!-- 🌐 System Layout Footer Area -->
     <footer class="app-footer">
         <p class="disclaimer"><strong>Disclaimer:</strong> SaveTubeNow is an independent extraction engine and is not affiliated with YouTube, Facebook, or Instagram. Users assume all media usage liabilities.</p>
+        
         <div class="footer-links">
             <a href="/privacy.html">Privacy Policy</a>
             <a href="/terms.html">Terms of Service</a>
             <a href="/disclaimer.html">Disclaimer</a>
             <a href="/contact.html">Contact Us</a>
+            <!-- Added Login Route Point -->
+            <a href="/login.html">Portal Sign In</a>
         </div>
-        <p class="copyright">&copy; 2026 SaveTubeNow. Core Systems Operational • Cloud Infrastructure Active.</p>
+        
+        <!-- Blended setup matrix link appended inside copyright layout string -->
+        <p class="copyright">
+            &copy; 2026 SaveTubeNow. Core Systems Operational • Cloud Infrastructure Active.
+            <a href="/register.html" style="font-size: 8px; opacity: 0.12; color: inherit; text-decoration: none; margin-left: 8px; font-family: monospace; cursor: default; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.4" onmouseout="this.style.opacity=0.12">SYS_INIT</a>
+        </p>
     </footer>
 
     <script src="https://unpkg.com/lucide@latest"></script>
     <script>
-        // Mount vector graphics onto marked DOM elements instantly on layout resolve
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
         });

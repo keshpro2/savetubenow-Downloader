@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaveTubeNow - Admin Access</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full max-w-md">
+        <!-- Brand Header -->
+        <div class="text-center mb-8">
+            <div class="inline-flex h-12 w-12 bg-brand-600 rounded-xl items-center justify-center font-bold text-white text-xl shadow-lg shadow-brand-500/20 mb-3">
+                S
+            </div>
+            <h1 class="text-2xl font-bold text-white tracking-wide">SaveTube<span class="text-brand-500">Admin</span></h1>
+            <p class="text-xs text-slate-400 mt-1">Authenticate to access the command center</p>
+        </div>
+
+        <!-- Login Card -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl">
+            
+            <!-- Dynamic Error Alert -->
+            <div id="error-alert" class="hidden mb-5 p-3.5 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400 flex items-center gap-2.5">
+                <svg class="w-4 h-4 shrink-0 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span id="error-message">Invalid credentials provided.</span>
+            </div>
+
+            <!-- Login Form -->
+            <form id="login-form" class="space-y-5">
+                <div>
+                    <label for="username" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Username or Email</label>
+                    <input type="text" id="username" required autocomplete="username" placeholder="admin" class="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors">
+                </div>
+
+                <div>
+                    <label for="password" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Password</label>
+                    <input type="password" id="password" required autocomplete="current-password" placeholder="••••••••" class="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors">
+                </div>
+
+                <button type="submit" id="btn-login" class="w-full py-2.5 px-4 bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white font-semibold text-sm rounded-xl transition-all shadow-lg shadow-brand-500/20 flex items-center justify-center gap-2">
+                    <span>Sign In</span>
+                </button>
+            </form>
+        </div>
+
+        <!-- Security Notice -->
+        <p class="text-center text-xs text-slate-600 mt-6">
+            Protected system area. Unauthorized access attempts are monitored and logged.
+        </p>
+    </div>
+
+    <!-- Client-side Authentication Script -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // 1. Session Check: Auto-redirect if token is already present
+            if (localStorage.getItem('admin_token')) {
+                window.location.href = '/dashboard.html';
+                return;
+            }
+
+            // 2. DOM Elements
+            const loginForm = document.getElementById('login-form');
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+            const btnLogin = document.getElementById('btn-login');
+            const errorAlert = document.getElementById('error-alert');
+            const errorMessage = document.getElementById('error-message');
+
+            // 3. Login Submission Handler
+            loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                // Clear previous error states
+                errorAlert.classList.add('hidden');
+
+                // UI Loading State
+                const originalBtnContent = btnLogin.innerHTML;
+                btnLogin.disabled = true;
+                btnLogin.innerHTML = `
+                    <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    <span>Authenticating...</span>
+                `;
+
+                try {
+                    const response = await fetch('/api/admin/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            username: usernameInput.value.trim(),
+                            password: passwordInput.value
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.error || 'Authentication failed. Please check your credentials.');
+                    }
+
+                    if (data.token) {
+                        // Store token for authenticated API calls in dashboard.js
+                        localStorage.setItem('admin_token', data.token);
+                        // Redirect to main admin dashboard
+                        window.location.href = '/dashboard.html';
+                    } else {
+                        throw new Error('Invalid token payload received from server.');
+                    }
+
+                } catch (err) {
+                    errorMessage.textContent = err.message;
+                    errorAlert.classList.remove('hidden');
+                } finally {
+                    btnLogin.disabled = false;
+                    btnLogin.innerHTML = originalBtnContent;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
