@@ -71,77 +71,79 @@
         </p>
     </div>
 
-    <!-- Client-side Authentication Script -->
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // 1. Session Check: Auto-redirect if token is already present
-            if (localStorage.getItem('admin_token')) {
-                window.location.href = '/dashboard.html';
-                return;
-            }
+ <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // 1. Session Check
+        if (localStorage.getItem('admin_token')) {
+            window.location.href = '/dashboard.html';
+            return;
+        }
 
-            // 2. DOM Elements
-            const loginForm = document.getElementById('login-form');
-            const usernameInput = document.getElementById('username');
-            const passwordInput = document.getElementById('password');
-            const btnLogin = document.getElementById('btn-login');
-            const errorAlert = document.getElementById('error-alert');
-            const errorMessage = document.getElementById('error-message');
+        const loginForm = document.getElementById('login-form');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const btnLogin = document.getElementById('btn-login');
+        const errorAlert = document.getElementById('error-alert');
+        const errorMessage = document.getElementById('error-message');
 
-            // 3. Login Submission Handler
-            loginForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
+        // Dynamically set API host if backend is on a separate domain
+        const API_BASE_URL = window.location.origin;
 
-                // Clear previous error states
-                errorAlert.classList.add('hidden');
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
 
-                // UI Loading State
-                const originalBtnContent = btnLogin.innerHTML;
-                btnLogin.disabled = true;
-                btnLogin.innerHTML = `
-                    <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                    </svg>
-                    <span>Authenticating...</span>
-                `;
+            errorAlert.classList.add('hidden');
 
-                try {
-                    const response = await fetch('/api/admin/login', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            username: usernameInput.value.trim(),
-                            password: passwordInput.value
-                        })
-                    });
+            const originalBtnContent = btnLogin.innerHTML;
+            btnLogin.disabled = true;
+            btnLogin.innerHTML = `
+                <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                <span>Authenticating...</span>
+            `;
 
-                    const data = await response.json();
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/admin/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: usernameInput.value.trim(),
+                        password: passwordInput.value
+                    })
+                });
 
-                    if (!response.ok) {
-                        throw new Error(data.error || 'Authentication failed. Please check your credentials.');
-                    }
-
-                    if (data.token) {
-                        // Store token for authenticated API calls in dashboard.js
-                        localStorage.setItem('admin_token', data.token);
-                        // Redirect to main admin dashboard
-                        window.location.href = '/dashboard.html';
-                    } else {
-                        throw new Error('Invalid token payload received from server.');
-                    }
-
-                } catch (err) {
-                    errorMessage.textContent = err.message;
-                    errorAlert.classList.remove('hidden');
-                } finally {
-                    btnLogin.disabled = false;
-                    btnLogin.innerHTML = originalBtnContent;
+                // Check if response is actually JSON before parsing
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error(`Server returned non-JSON response (${response.status}). Check server logs.`);
                 }
-            });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Authentication failed.');
+                }
+
+                if (data.token) {
+                    localStorage.setItem('admin_token', data.token);
+                    window.location.href = '/dashboard.html';
+                } else {
+                    throw new Error('No token received from server.');
+                }
+
+            } catch (err) {
+                errorMessage.textContent = err.message;
+                errorAlert.classList.remove('hidden');
+            } finally {
+                btnLogin.disabled = false;
+                btnLogin.innerHTML = originalBtnContent;
+            }
         });
-    </script>
+    });
+</script>
 </body>
 </html>

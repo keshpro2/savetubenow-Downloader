@@ -44,6 +44,7 @@ const db = mysql.createPool({
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || 'rukundoshimokevin',
     database: process.env.DB_NAME || 'savetubenow',
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: true } : false ,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
