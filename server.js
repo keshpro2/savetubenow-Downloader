@@ -299,14 +299,18 @@ app.post('/api/info', (req, res) => {
 });
 
 // 3. STITCHING AND CONVERSION DOWNLOAD PATHWAY (WITH LEAK-SAFE CLEANUP)
+const ffmpegPath = require('ffmpeg-static'); // Requires 'npm install ffmpeg-static'
+
 app.get('/api/download', (req, res) => {
     let { url, formatId, title, isAudio } = req.query;
-    if (!url) return res.status(400).json({ error: 'URL target parameter is missing.' });
+    if (!url || !isValidUrl(url)) {
+        return res.status(400).json({ error: 'Valid URL parameter is missing.' });
+    }
 
     url = url.trim().replace(/[;&|`$\n\r<>]/g, '');
 
-    const cleanTitle = (title || 'video').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-    const brandedFilename = `${cleanTitle}_from_savetubenow_downloader`;
+    const cleanTitle = (title || 'music').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const brandedFilename = `${cleanTitle}_from_savetubenow`;
 
     const uniqueId = crypto.randomBytes(4).toString('hex');
     const ext = isAudio === 'true' ? 'mp3' : 'mp4';
@@ -315,17 +319,33 @@ app.get('/api/download', (req, res) => {
     let ytDlpArgs = [];
 
     if (isAudio === 'true') {
-        ytDlpArgs = ['-f', 'bestaudio', '-x', '--audio-format', 'mp3', '-o', tempFilePath, '--no-playlist'];
+        ytDlpArgs = [
+            '-f', 'bestaudio/best',
+            '-x', 
+            '--audio-format', 'mp3',
+            '--audio-quality', '0',
+            '--ffmpeg-location', ffmpegPath, // Passes ffmpeg binary directly to yt-dlp
+            '-o', tempFilePath,
+            '--no-playlist'
+        ];
     } else {
         const formatSelection = formatId === 'best' ? 'bestvideo+bestaudio/best' : `${formatId}+bestaudio/best`;
-        ytDlpArgs = ['-f', formatSelection, '--merge-output-format', 'mp4', '-o', tempFilePath, '--no-playlist'];
+        ytDlpArgs = [
+            '-f', formatSelection,
+            '--merge-output-format', 'mp4',
+            '--ffmpeg-location', ffmpegPath,
+            '-o', tempFilePath,
+            '--no-playlist'
+        ];
     }
 
-    ytDlpArgs.push('--config-locations', path.join(__dirname, 'yt-dlp.conf'));
+    // Bypass cloud IP restrictions using iOS/Android player clients
     ytDlpArgs.push(
-        '--extractor-args', 'youtube:player_client=tv,web_embedded',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        '--extractor-args', 'youtube:player_client=ios,mweb',
+        '--no-check-certificates',
+        '--user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15'
     );
+
     const localCookiesPath = path.join(__dirname, 'cookies.txt');
     if (fs.existsSync(localCookiesPath)) {
         ytDlpArgs.push('--cookies', localCookiesPath);
@@ -338,30 +358,18 @@ app.get('/api/download', (req, res) => {
 
     downloadProcess.stderr.on('data', (data) => { stderrData += data.toString(); });
 
-    // Handle abrupt user disconnection during long downloads
     req.on('close', () => {
-        if (!downloadProcess.killed) {
-            downloadProcess.kill('SIGTERM');
-        }
-        if (fs.existsSync(tempFilePath)) {
-            fs.unlink(tempFilePath, () => {});
-        }
+        if (!downloadProcess.killed) downloadProcess.kill('SIGTERM');
+        if (fs.existsSync(tempFilePath)) fs.unlink(tempFilePath, () => {});
     });
 
     downloadProcess.on('close', (code) => {
         if (code !== 0) {
             systemStats.failedDownloads++;
-            systemStats.errorLogs.unshift({
-                timestamp: new Date().toLocaleString(),
-                url: url,
-                platform: url.includes('youtube') || url.includes('youtu.be') ? 'YouTube' : 'Other',
-                error: stderrData.slice(0, 100)
-            });
-
-            if (systemStats.errorLogs.length > 50) systemStats.errorLogs.pop();
+            console.error('yt-dlp Download Error:', stderrData);
 
             if (!res.headersSent) {
-                return res.status(500).json({ error: 'Extraction failed.' });
+                return res.status(500).json({ error: `Download failed: ${stderrData.slice(0, 120)}` });
             }
             return;
         }
@@ -375,7 +383,6 @@ app.get('/api/download', (req, res) => {
         });
     });
 });
-
 // 4. LIVE SEARCH SUGGESTIONS PROXY
 app.get('/api/suggestions', async (req, res) => {
     const query = req.query.q;
