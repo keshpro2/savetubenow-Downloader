@@ -11,6 +11,7 @@ const bcrypt = require('bcrypt');         // Secure password hashing library
 const mysql = require('mysql2/promise');   // Promise-based MySQL driver
 const jwt = require('jsonwebtoken');       // Security tokens
 const nodemailer = require('nodemailer');
+const ffmpegPath = require('ffmpeg-static');
 
 // Initialize express instance
 const app = express();
@@ -25,6 +26,16 @@ const systemStats = {
     errorLogs: [],      // Max 50 error entries
     requestLogs: [],    // Max 100 recent API request logs
     extractionLogs: []  // Max 50 extraction activity logs
+};
+
+// Helper utility to log system errors safely into admin metrics
+const logSystemError = (platform, errorMsg) => {
+    systemStats.errorLogs.unshift({
+        timestamp: new Date().toLocaleTimeString(),
+        platform: platform,
+        error: errorMsg
+    });
+    if (systemStats.errorLogs.length > 50) systemStats.errorLogs.pop();
 };
 
 // Configure email transporter
@@ -77,9 +88,38 @@ const db = mysql.createPool({
     }
 })();
 
-// Binary path resolution (Linux vs Windows local)
-const localBinPath = path.join(__dirname, 'bin', 'yt-dlp');
-const ytDlpBinary = fs.existsSync(localBinPath) ? localBinPath : 'yt-dlp';
+const cookiesTmpPath = path.join(os.tmpdir(), 'youtube_cookies.txt');
+
+// Auto-generate cookies file from host environment variables
+if (process.env.YOUTUBE_COOKIES) {
+    fs.writeFileSync(cookiesTmpPath, process.env.YOUTUBE_COOKIES);
+}
+
+const getCookiesPath = () => {
+    if (fs.existsSync(cookiesTmpPath)) return cookiesTmpPath;
+    const localCookies = path.join(__dirname, 'cookies.txt');
+    if (fs.existsSync(localCookies)) return localCookies;
+    return null;
+};
+
+// Safe dynamic resolution for yt-dlp binary across Windows (local) and Linux (hosted production)
+const getYtDlpBinary = () => {
+    const isWindows = process.platform === 'win32';
+    const binaryName = isWindows ? 'yt-dlp.exe' : 'yt-dlp';
+
+    // 1. Check inside node_modules/yt-dlp-exec
+    const moduleBinPath = path.join(__dirname, 'node_modules', 'yt-dlp-exec', 'bin', binaryName);
+    if (fs.existsSync(moduleBinPath)) return moduleBinPath;
+
+    // 2. Check project local bin folder
+    const localBinPath = path.join(__dirname, 'bin', binaryName);
+    if (fs.existsSync(localBinPath)) return localBinPath;
+
+    // 3. Fallback to global system environment PATH
+    return 'yt-dlp';
+};
+
+const ytDlpBinary = getYtDlpBinary();
 
 // In-memory caching engines
 const searchCache = new NodeCache({ stdTTL: 600, checkperiod: 120 });
@@ -185,6 +225,13 @@ app.post('/api/search', (req, res) => {
     let stdoutData = '';
     searchProcess.stdout.on('data', (data) => { stdoutData += data.toString(); });
 
+    searchProcess.on('error', (err) => {
+        logSystemError('YouTube', `Search process error: ${err.message}`);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to execute search process.' });
+        }
+    });
+
     searchProcess.on('close', (code) => {
         try {
             const lines = stdoutData.trim().split('\n').filter(line => line.trim() !== '');
@@ -194,7 +241,7 @@ app.post('/api/search', (req, res) => {
                     title: parsed.title,
                     id: parsed.id,
                     url: parsed.url || `https://www.youtube.com/watch?v=${parsed.id}`,
-                    duration: parsed.duration ? new Date(parsed.duration * 1000).toISOString().substr(11, 8).replace(/^00:/, '') : 'Live/Unknown',
+                    duration: parsed.duration ? new Date(parsed.duration * 1000).toISOString().substring(11, 19).replace(/^00:/, '') : 'Live/Unknown',
                     thumbnail: parsed.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${parsed.id}/mqdefault.jpg`
                 };
             });
@@ -203,6 +250,7 @@ app.post('/api/search', (req, res) => {
             searchCache.set(cacheKey, finalResponse);
             res.json(finalResponse);
         } catch (err) {
+            logSystemError('YouTube', `Search JSON parse error: ${err.message}`);
             res.status(500).json({ error: 'Failed to complete search query layout.' });
         }
     });
@@ -211,18 +259,19 @@ app.post('/api/search', (req, res) => {
 // 2. VIDEO INFO/FORMATS EXTRACTION PATHWAY (WITH IN-MEMORY CACHING)
 app.post('/api/info', (req, res) => {
     let { url } = req.body;
+
     if (!url) return res.status(400).json({ error: 'URL target is missing.' });
 
     url = url.trim().replace(/[;&|`$\n\r<>]/g, '');
     const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1').split(',')[0].trim();
 
-    // Check Info Cache to save CPU and bypass rate limits
+    // Check Info Cache
     const cacheKey = `info_${url.toLowerCase()}`;
     const cachedInfo = infoCache.get(cacheKey);
     if (cachedInfo) {
         systemStats.extractionLogs.unshift({
             timestamp: new Date().toLocaleTimeString(),
-            title: cachedInfo.title.substring(0, 40) + '...',
+            title: (cachedInfo.title || '').substring(0, 40) + '...',
             platform: url.includes('youtube') || url.includes('youtu.be') ? 'YouTube' : 'Other',
             ip: clientIp,
             status: 'Success (Cache Hit)'
@@ -233,16 +282,20 @@ app.post('/api/info', (req, res) => {
     }
 
     let ytDlpArgs = [
-        '--config-locations', path.join(__dirname, 'yt-dlp.conf'),
         '--dump-json',
         '--no-playlist',
         '--extractor-args', 'youtube:player_client=tv,web_embedded',
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     ];
 
-    const localCookiesPath = path.join(__dirname, 'cookies.txt');
-    if (fs.existsSync(localCookiesPath)) {
-        ytDlpArgs.push('--cookies', localCookiesPath);
+    const localConfPath = path.join(__dirname, 'yt-dlp.conf');
+    if (fs.existsSync(localConfPath)) {
+        ytDlpArgs.unshift('--config-locations', localConfPath);
+    }
+
+    const activeCookies = getCookiesPath();
+    if (activeCookies) {
+        ytDlpArgs.push('--cookies', activeCookies);
     }
 
     ytDlpArgs.push(url);
@@ -254,9 +307,17 @@ app.post('/api/info', (req, res) => {
     infoProcess.stdout.on('data', (data) => { stdoutData += data; });
     infoProcess.stderr.on('data', (data) => { stderrData += data; });
 
+    infoProcess.on('error', (err) => {
+        logSystemError('YouTube', `Info extraction process error: ${err.message}`);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to launch media extraction process.' });
+        }
+    });
+
     infoProcess.on('close', (code) => {
         if (code !== 0) {
             console.error('yt-dlp info error:', stderrData);
+            logSystemError(url.includes('youtube') || url.includes('youtu.be') ? 'YouTube' : 'Other', stderrData.slice(0, 200));
             return res.status(500).json({
                 error: `System Error (${code}): ${stderrData.slice(0, 100)}...`
             });
@@ -264,12 +325,14 @@ app.post('/api/info', (req, res) => {
 
         try {
             const parsedData = JSON.parse(stdoutData);
+            const formatsList = Array.isArray(parsedData.formats) ? parsedData.formats : [];
+
             const formattedResponse = {
                 title: parsedData.title,
                 thumbnail: parsedData.thumbnail,
                 duration: parsedData.duration_string || '00:00',
                 url: parsedData.webpage_url,
-                formats: parsedData.formats.map(f => ({
+                formats: formatsList.map(f => ({
                     formatId: f.format_id,
                     resolution: f.resolution || `${f.width || '?'}x${f.height || '?'}`,
                     ext: f.ext,
@@ -278,13 +341,11 @@ app.post('/api/info', (req, res) => {
                 }))
             };
 
-            // Store result in cache
             infoCache.set(cacheKey, formattedResponse);
 
-            // Log extraction audit telemetry
             systemStats.extractionLogs.unshift({
                 timestamp: new Date().toLocaleTimeString(),
-                title: parsedData.title.substring(0, 40) + '...',
+                title: (parsedData.title || '').substring(0, 40) + '...',
                 platform: url.includes('youtube') || url.includes('youtu.be') ? 'YouTube' : 'Other',
                 ip: clientIp,
                 status: 'Success'
@@ -293,14 +354,13 @@ app.post('/api/info', (req, res) => {
 
             res.json(formattedResponse);
         } catch (parseErr) {
+            logSystemError('System', `JSON schema parse error: ${parseErr.message}`);
             res.status(500).json({ error: 'Failed to process media configuration schema.' });
         }
     });
 });
 
-// 3. STITCHING AND CONVERSION DOWNLOAD PATHWAY (WITH LEAK-SAFE CLEANUP)
-const ffmpegPath = require('ffmpeg-static'); // Requires 'npm install ffmpeg-static'
-
+// 3. STITCHING AND CONVERSION DOWNLOAD PATHWAY
 app.get('/api/download', (req, res) => {
     let { url, formatId, title, isAudio } = req.query;
     if (!url || !isValidUrl(url)) {
@@ -324,7 +384,7 @@ app.get('/api/download', (req, res) => {
             '-x', 
             '--audio-format', 'mp3',
             '--audio-quality', '0',
-            '--ffmpeg-location', ffmpegPath, // Passes ffmpeg binary directly to yt-dlp
+            '--ffmpeg-location', ffmpegPath,
             '-o', tempFilePath,
             '--no-playlist'
         ];
@@ -339,16 +399,14 @@ app.get('/api/download', (req, res) => {
         ];
     }
 
-    // Bypass cloud IP restrictions using iOS/Android player clients
     ytDlpArgs.push(
-        '--extractor-args', 'youtube:player_client=ios,mweb',
-        '--no-check-certificates',
-        '--user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15'
+        '--extractor-args', 'youtube:player_client=android,mweb',
+        '--user-agent', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36'
     );
 
-    const localCookiesPath = path.join(__dirname, 'cookies.txt');
-    if (fs.existsSync(localCookiesPath)) {
-        ytDlpArgs.push('--cookies', localCookiesPath);
+    const activeCookies = getCookiesPath();
+    if (activeCookies) {
+        ytDlpArgs.push('--cookies', activeCookies);
     }
 
     ytDlpArgs.push(url);
@@ -357,6 +415,15 @@ app.get('/api/download', (req, res) => {
     let stderrData = '';
 
     downloadProcess.stderr.on('data', (data) => { stderrData += data.toString(); });
+
+    downloadProcess.on('error', (err) => {
+        systemStats.failedDownloads++;
+        logSystemError('YouTube', `Download spawn error: ${err.message}`);
+        if (fs.existsSync(tempFilePath)) fs.unlink(tempFilePath, () => {});
+        if (!res.headersSent) {
+            return res.status(500).json({ error: `Download process failed to execute: ${err.message}` });
+        }
+    });
 
     req.on('close', () => {
         if (!downloadProcess.killed) downloadProcess.kill('SIGTERM');
@@ -367,6 +434,7 @@ app.get('/api/download', (req, res) => {
         if (code !== 0) {
             systemStats.failedDownloads++;
             console.error('yt-dlp Download Error:', stderrData);
+            logSystemError(url.includes('youtube') || url.includes('youtu.be') ? 'YouTube' : 'Other', stderrData.slice(0, 200));
 
             if (!res.headersSent) {
                 return res.status(500).json({ error: `Download failed: ${stderrData.slice(0, 120)}` });
@@ -383,6 +451,7 @@ app.get('/api/download', (req, res) => {
         });
     });
 });
+
 // 4. LIVE SEARCH SUGGESTIONS PROXY
 app.get('/api/suggestions', async (req, res) => {
     const query = req.query.q;
@@ -471,7 +540,7 @@ app.post('/api/admin/login', async (req, res) => {
         );
 
         const optimizationAlerts = [];
-        const youtubeErrors = systemStats.errorLogs.filter(l => l.platform === 'YouTube' && l.error.includes('429'));
+        const youtubeErrors = systemStats.errorLogs.filter(l => l.platform === 'YouTube' && l.error && l.error.includes('429'));
         if (youtubeErrors.length > 3) {
             optimizationAlerts.push('Action Required: YouTube is rate-limiting this server block (HTTP 429).');
         }
@@ -497,7 +566,7 @@ app.get('/api/admin/metrics', verifyAdminToken, (req, res) => {
     const memUsagePct = ((usedMem / totalMem) * 100).toFixed(1);
 
     const optimizationAlerts = [];
-    const youtubeErrors = systemStats.errorLogs.filter(l => l.platform === 'YouTube' && l.error.includes('429'));
+    const youtubeErrors = systemStats.errorLogs.filter(l => l.platform === 'YouTube' && l.error && l.error.includes('429'));
     if (youtubeErrors.length > 3) {
         optimizationAlerts.push('Action Required: YouTube is rate-limiting this server block (HTTP 429).');
     }
