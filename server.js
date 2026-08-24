@@ -363,40 +363,49 @@ app.post('/api/info', (req, res) => {
 // 3. STITCHING AND CONVERSION DOWNLOAD PATHWAY
 app.get('/api/download', (req, res) => {
     let { url, formatId, title, isAudio } = req.query;
+
     if (!url || !isValidUrl(url)) {
         return res.status(400).json({ error: 'Valid URL parameter is missing.' });
     }
 
     url = url.trim().replace(/[;&|`$\n\r<>]/g, '');
 
-    const cleanTitle = (title || 'music').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const cleanTitle = (title || 'media').replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const brandedFilename = `${cleanTitle}_from_savetubenow`;
 
     const uniqueId = crypto.randomBytes(4).toString('hex');
-    const ext = isAudio === 'true' ? 'mp3' : 'mp4';
+    const isAudioMode = isAudio === 'true';
+    const ext = isAudioMode ? 'mp3' : 'mp4';
     const tempFilePath = path.join(os.tmpdir(), `savetube_${uniqueId}.${ext}`);
 
     let ytDlpArgs = [];
 
-    if (isAudio === 'true') {
+    if (isAudioMode) {
         ytDlpArgs = [
             '-f', 'bestaudio/best',
             '-x', 
             '--audio-format', 'mp3',
             '--audio-quality', '0',
-            '--ffmpeg-location', ffmpegPath,
             '-o', tempFilePath,
             '--no-playlist'
         ];
     } else {
-        const formatSelection = formatId === 'best' ? 'bestvideo+bestaudio/best' : `${formatId}+bestaudio/best`;
+        // Safe fallback for formatSelection if formatId is missing/undefined
+        const formatSelection = (!formatId || formatId === 'best') 
+            ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best' 
+            : `${formatId}+bestaudio/best`;
+
         ytDlpArgs = [
             '-f', formatSelection,
             '--merge-output-format', 'mp4',
-            '--ffmpeg-location', ffmpegPath,
             '-o', tempFilePath,
             '--no-playlist'
         ];
+    }
+
+    // Safely append ffmpeg location if present
+    if (ffmpegPath && fs.existsSync(ffmpegPath)) {
+        ytDlpArgs.push('--ffmpeg-location', ffmpegPath);
     }
 
     ytDlpArgs.push(
@@ -413,40 +422,58 @@ app.get('/api/download', (req, res) => {
 
     const downloadProcess = spawn(ytDlpBinary, ytDlpArgs);
     let stderrData = '';
+    let isClientDisconnected = false;
 
-    downloadProcess.stderr.on('data', (data) => { stderrData += data.toString(); });
+    downloadProcess.stderr.on('data', (data) => { 
+        stderrData += data.toString(); 
+    });
 
     downloadProcess.on('error', (err) => {
         systemStats.failedDownloads++;
         logSystemError('YouTube', `Download spawn error: ${err.message}`);
         if (fs.existsSync(tempFilePath)) fs.unlink(tempFilePath, () => {});
-        if (!res.headersSent) {
+        
+        if (!res.headersSent && !isClientDisconnected) {
             return res.status(500).json({ error: `Download process failed to execute: ${err.message}` });
         }
     });
 
+    // Guard flag to prevent header collisions when client aborts stream
     req.on('close', () => {
+        isClientDisconnected = true;
         if (!downloadProcess.killed) downloadProcess.kill('SIGTERM');
-        if (fs.existsSync(tempFilePath)) fs.unlink(tempFilePath, () => {});
+        if (fs.existsSync(tempFilePath)) {
+            fs.unlink(tempFilePath, () => {});
+        }
     });
 
     downloadProcess.on('close', (code) => {
+        // Stop execution if client closed connection
+        if (isClientDisconnected) return;
+
         if (code !== 0) {
             systemStats.failedDownloads++;
             console.error('yt-dlp Download Error:', stderrData);
             logSystemError(url.includes('youtube') || url.includes('youtu.be') ? 'YouTube' : 'Other', stderrData.slice(0, 200));
 
             if (!res.headersSent) {
-                return res.status(500).json({ error: `Download failed: ${stderrData.slice(0, 120)}` });
+                return res.status(500).json({ 
+                    error: 'Download processing failed on server.',
+                    details: stderrData.slice(0, 150) || 'Process exited with non-zero code.'
+                });
             }
             return;
         }
 
         systemStats.successfulDownloads++;
 
+        // Stream binary file response with automatic cleanup callback
         res.download(tempFilePath, `${brandedFilename}.${ext}`, (err) => {
             if (fs.existsSync(tempFilePath)) {
                 fs.unlink(tempFilePath, () => {});
+            }
+            if (err && !res.headersSent) {
+                console.error('File stream delivery error:', err);
             }
         });
     });

@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "postinstall": "chmod +x node_modules/yt-dlp-exec/bin/yt-dlp || true",
+  "start": "node server.js"
   },
   "keywords": [],
   "author": "",
