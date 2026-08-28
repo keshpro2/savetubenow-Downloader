@@ -92,7 +92,11 @@ const cookiesTmpPath = path.join(os.tmpdir(), 'youtube_cookies.txt');
 
 // Auto-generate cookies file from host environment variables
 if (process.env.YOUTUBE_COOKIES) {
-    fs.writeFileSync(cookiesTmpPath, process.env.YOUTUBE_COOKIES);
+    try {
+        fs.writeFileSync(cookiesTmpPath, process.env.YOUTUBE_COOKIES);
+    } catch (err) {
+        console.error('Failed to write YOUTUBE_COOKIES temp file:', err.message);
+    }
 }
 
 const getCookiesPath = () => {
@@ -195,6 +199,10 @@ function isValidUrl(string) {
     }
 }
 
+// Modern extractor args & mobile user agent to prevent YouTube player errors
+const MODERN_EXTRACTOR_ARGS = ['youtube:player_client=ios,mweb,web'];
+const MODERN_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+
 // 1. LIGHTNING FAST INITIAL QUERY
 app.post('/api/search', (req, res) => {
     let { url } = req.body;
@@ -216,11 +224,21 @@ app.post('/api/search', (req, res) => {
         return res.json(cachedSearch);
     }
 
-    const searchProcess = spawn(ytDlpBinary, [
+    let searchArgs = [
         '--flat-playlist',
         '--dump-json',
-        `ytsearch5:${sanitizedQuery}`
-    ]);
+        '--extractor-args', MODERN_EXTRACTOR_ARGS[0],
+        '--user-agent', MODERN_USER_AGENT
+    ];
+
+    const activeCookies = getCookiesPath();
+    if (activeCookies) {
+        searchArgs.push('--cookies', activeCookies);
+    }
+
+    searchArgs.push(`ytsearch5:${sanitizedQuery}`);
+
+    const searchProcess = spawn(ytDlpBinary, searchArgs);
 
     let stdoutData = '';
     searchProcess.stdout.on('data', (data) => { stdoutData += data.toString(); });
@@ -284,8 +302,8 @@ app.post('/api/info', (req, res) => {
     let ytDlpArgs = [
         '--dump-json',
         '--no-playlist',
-        '--extractor-args', 'youtube:player_client=tv,web_embedded',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        '--extractor-args', MODERN_EXTRACTOR_ARGS[0],
+        '--user-agent', MODERN_USER_AGENT
     ];
 
     const localConfPath = path.join(__dirname, 'yt-dlp.conf');
@@ -315,47 +333,57 @@ app.post('/api/info', (req, res) => {
     });
 
     infoProcess.on('close', (code) => {
-        if (code !== 0) {
-            console.error('yt-dlp info error:', stderrData);
-            logSystemError(url.includes('youtube') || url.includes('youtu.be') ? 'YouTube' : 'Other', stderrData.slice(0, 200));
-            return res.status(500).json({
-                error: `System Error (${code}): ${stderrData.slice(0, 100)}...`
-            });
+        // Attempt to parse stdout first, ignoring non-fatal warnings on stderr
+        if (stdoutData.trim()) {
+            try {
+                const parsedData = JSON.parse(stdoutData);
+                const formatsList = Array.isArray(parsedData.formats) ? parsedData.formats : [];
+
+                const formattedResponse = {
+                    title: parsedData.title,
+                    thumbnail: parsedData.thumbnail,
+                    duration: parsedData.duration_string || '00:00',
+                    url: parsedData.webpage_url,
+                    formats: formatsList.map(f => ({
+                        formatId: f.format_id,
+                        resolution: f.resolution || `${f.width || '?'}x${f.height || '?'}`,
+                        ext: f.ext,
+                        filesize: f.filesize ? `${(f.filesize / (1024 * 1024)).toFixed(1)} MB` : 'Unknown Size',
+                        isAudio: !f.video_ext || f.video_ext === 'none'
+                    }))
+                };
+
+                infoCache.set(cacheKey, formattedResponse);
+
+                systemStats.extractionLogs.unshift({
+                    timestamp: new Date().toLocaleTimeString(),
+                    title: (parsedData.title || '').substring(0, 40) + '...',
+                    platform: url.includes('youtube') || url.includes('youtu.be') ? 'YouTube' : 'Other',
+                    ip: clientIp,
+                    status: 'Success'
+                });
+                if (systemStats.extractionLogs.length > 50) systemStats.extractionLogs.pop();
+
+                return res.json(formattedResponse);
+            } catch (parseErr) {
+                logSystemError('System', `JSON schema parse error: ${parseErr.message}`);
+            }
         }
 
-        try {
-            const parsedData = JSON.parse(stdoutData);
-            const formatsList = Array.isArray(parsedData.formats) ? parsedData.formats : [];
+        // If stdout couldn't be parsed or was empty, evaluate fatal errors
+        const fatalErrors = stderrData
+            .split('\n')
+            .filter(line => !line.startsWith('WARNING:') && !line.includes('[youtube]') && line.trim() !== '')
+            .join('\n');
 
-            const formattedResponse = {
-                title: parsedData.title,
-                thumbnail: parsedData.thumbnail,
-                duration: parsedData.duration_string || '00:00',
-                url: parsedData.webpage_url,
-                formats: formatsList.map(f => ({
-                    formatId: f.format_id,
-                    resolution: f.resolution || `${f.width || '?'}x${f.height || '?'}`,
-                    ext: f.ext,
-                    filesize: f.filesize ? `${(f.filesize / (1024 * 1024)).toFixed(1)} MB` : 'Unknown Size',
-                    isAudio: !f.video_ext || f.video_ext === 'none'
-                }))
-            };
-
-            infoCache.set(cacheKey, formattedResponse);
-
-            systemStats.extractionLogs.unshift({
-                timestamp: new Date().toLocaleTimeString(),
-                title: (parsedData.title || '').substring(0, 40) + '...',
-                platform: url.includes('youtube') || url.includes('youtu.be') ? 'YouTube' : 'Other',
-                ip: clientIp,
-                status: 'Success'
+        console.error('yt-dlp info error:', stderrData);
+        logSystemError(url.includes('youtube') || url.includes('youtu.be') ? 'YouTube' : 'Other', (fatalErrors || stderrData).slice(0, 200));
+        
+        if (!res.headersSent) {
+            return res.status(500).json({
+                error: `System Error (${code}): Failed to fetch video info.`,
+                details: (fatalErrors || stderrData).slice(0, 150)
             });
-            if (systemStats.extractionLogs.length > 50) systemStats.extractionLogs.pop();
-
-            res.json(formattedResponse);
-        } catch (parseErr) {
-            logSystemError('System', `JSON schema parse error: ${parseErr.message}`);
-            res.status(500).json({ error: 'Failed to process media configuration schema.' });
         }
     });
 });
@@ -390,7 +418,6 @@ app.get('/api/download', (req, res) => {
             '--no-playlist'
         ];
     } else {
-        // Safe fallback for formatSelection if formatId is missing/undefined
         const formatSelection = (!formatId || formatId === 'best') 
             ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best' 
             : `${formatId}+bestaudio/best`;
@@ -409,8 +436,8 @@ app.get('/api/download', (req, res) => {
     }
 
     ytDlpArgs.push(
-        '--extractor-args', 'youtube:player_client=android,mweb',
-        '--user-agent', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36'
+        '--extractor-args', MODERN_EXTRACTOR_ARGS[0],
+        '--user-agent', MODERN_USER_AGENT
     );
 
     const activeCookies = getCookiesPath();
@@ -448,18 +475,26 @@ app.get('/api/download', (req, res) => {
     });
 
     downloadProcess.on('close', (code) => {
-        // Stop execution if client closed connection
         if (isClientDisconnected) return;
 
-        if (code !== 0) {
+        const fileExistsAndValid = fs.existsSync(tempFilePath) && fs.statSync(tempFilePath).size > 0;
+
+        // Strip non-fatal warnings from stderr
+        const fatalErrors = stderrData
+            .split('\n')
+            .filter(line => !line.startsWith('WARNING:') && !line.includes('[youtube]') && line.trim() !== '')
+            .join('\n');
+
+        // If file exists and is valid, treat download as success even if yt-dlp emitted non-fatal warnings
+        if (!fileExistsAndValid) {
             systemStats.failedDownloads++;
             console.error('yt-dlp Download Error:', stderrData);
-            logSystemError(url.includes('youtube') || url.includes('youtu.be') ? 'YouTube' : 'Other', stderrData.slice(0, 200));
+            logSystemError(url.includes('youtube') || url.includes('youtu.be') ? 'YouTube' : 'Other', (fatalErrors || stderrData).slice(0, 200));
 
             if (!res.headersSent) {
                 return res.status(500).json({ 
                     error: 'Download processing failed on server.',
-                    details: stderrData.slice(0, 150) || 'Process exited with non-zero code.'
+                    details: (fatalErrors || stderrData).slice(0, 150) || 'Process exited without creating file.'
                 });
             }
             return;
